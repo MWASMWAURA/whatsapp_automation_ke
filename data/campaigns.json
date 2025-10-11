@@ -131,5 +131,43 @@
       "negative": 0,
       "neutral": 0
     }
+  },
+  {
+    "id": "1760198483336",
+    "name": "jd",
+    "message": "Hi {{name}}! Welcome to our service. As {{title}}, I'm sure you'll find our solutions valuable.",
+    "selectedContacts": [
+      "1760094028356"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-11T16:01:24.525Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760206923660",
+    "name": "hg",
+    "message": "Dear {{name}},\n\nI hope this message finds you doing well. As your new {{title}}, I'm thrilled to share information about our service and the valuable solutions we have to offer. We're dedicated to providing exceptional support and tailored solutions to help you achieve your goals.\n\nPlease don't hesitate to reach out if you have any questions or if there is anything I can assist you with. I'm looking forward to the opportunity to work with you.\n\nSincerely,\n[Your Name]",
+    "selectedContacts": [
+      "1760092059123"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-11T18:22:04.937Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
   }
 ]
