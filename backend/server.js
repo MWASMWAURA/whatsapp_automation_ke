@@ -634,6 +634,8 @@ app.post('/api/start-session', async (req, res) => {
             userMessage: message.body,
             campaignId: relevantCampaign.id,
             contactId: contact.id,
+            contactPhone: senderPhone,
+            contactName: contact.name,
           }),
         });
 
@@ -1087,7 +1089,7 @@ app.post('/api/delete-session', async (req, res) => {
 // Send reminder messages to user
 app.post('/api/ai/generate-autoreply', async (req, res) => {
   try {
-    const { userMessage, faqs, companyInfo } = req.body;
+    const { userMessage, faqs, companyInfo, contactName } = req.body;
     if (!userMessage) {
       return res.status(400).json({ error: 'User message required' });
     }
@@ -1123,7 +1125,7 @@ app.post('/api/ai/generate-autoreply', async (req, res) => {
     let prompt;
     if (relevantFAQ) {
       // Generate AI response based on the relevant FAQ
-      prompt = `You are a helpful customer service AI assistant. A customer asked: "${userMessage}"
+      prompt = `You are a helpful customer service AI assistant${contactName ? ` responding to ${contactName}` : ''}. A customer asked: "${userMessage}"
 
 Based on our FAQ knowledge, here's the relevant information:
 Question: ${relevantFAQ.question}
@@ -1131,7 +1133,7 @@ Answer: ${relevantFAQ.answer}
 
 ${companyInfo ? `Company information: ${companyInfo}` : ''}
 
-Please provide a helpful, friendly response that answers their question using the FAQ information. Keep it concise and professional. Do not mention that you're using FAQ data - just provide the helpful answer.`;
+Please provide a helpful, friendly, and personalized response that answers their question using the FAQ information. Keep it concise and professional. Do not mention that you're using FAQ data - just provide the helpful answer.`;
     } else {
       // Generate a general helpful response
       prompt = `You are a helpful customer service AI assistant for a sales training company. A customer sent this message: "${userMessage}"

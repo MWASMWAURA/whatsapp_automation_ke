@@ -204,7 +204,8 @@ export async function analyzeSentiment(message: string): Promise<{ success: bool
 export async function generateAutoreply(
   userMessage: string,
   faqs: Array<{ question: string; answer: string }>,
-  companyInfo?: string
+  companyInfo?: string,
+  contactName?: string
 ): Promise<AIResponse> {
   try {
     const response = await fetch(`${BACKEND_URL}/api/ai/generate-autoreply`, {
@@ -212,7 +213,7 @@ export async function generateAutoreply(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userMessage, faqs, companyInfo }),
+      body: JSON.stringify({ userMessage, faqs, companyInfo, contactName }),
     });
 
     if (!response.ok) {
