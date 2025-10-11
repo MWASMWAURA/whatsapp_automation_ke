@@ -1,0 +1,62 @@
+[
+  {
+    "id": "1",
+    "name": "John Doe",
+    "title": "CEO",
+    "phone": "+1234567890",
+    "tags": [
+      "VIP",
+      "Tech"
+    ]
+  },
+  {
+    "id": "2",
+    "name": "Jane Smith",
+    "title": "Marketing Manager",
+    "phone": "+1234567891",
+    "tags": [
+      "Marketing"
+    ]
+  },
+  {
+    "id": "3",
+    "name": "Bob Johnson",
+    "title": "Sales Rep",
+    "phone": "+1234567892",
+    "tags": [
+      "Sales"
+    ]
+  },
+  {
+    "id": "1760090598638",
+    "name": "Test User",
+    "title": "Manager",
+    "phone": "+1234567890",
+    "tags": [
+      "test"
+    ]
+  },
+  {
+    "id": "1760092059123",
+    "name": "steve",
+    "title": "social media manager",
+    "phone": "254798149980",
+    "tags": []
+  },
+  {
+    "id": "1760094028356",
+    "name": "james",
+    "title": "CEO",
+    "phone": "254768038725",
+    "tags": [
+      "WEBSOLUTIONS"
+    ]
+  },
+  {
+    "id": "1760108866013",
+    "name": "Judy",
+    "title": "CEO",
+    "phone": "254790328434",
+    "tags": []
+  }
+]

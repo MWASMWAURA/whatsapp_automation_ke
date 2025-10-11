@@ -1,0 +1,135 @@
+[
+  {
+    "id": "1760097107155",
+    "name": "owner0",
+    "message": "Hi {{name}}! Welcome to our service. As {{title}}, I'm sure you'll find our solutions valuable.",
+    "selectedContacts": [
+      "1760094028356"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T11:51:47.188Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760098379138",
+    "name": "hg",
+    "message": "Hello {{name}}, I wanted to follow up on our previous conversation. How can we assist you today?",
+    "selectedContacts": [
+      "1760094028356"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T12:12:59.238Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760099682530",
+    "name": "h9",
+    "message": "Hello {{name}}, I wanted to follow up on our previous conversation. How can we assist you today?",
+    "selectedContacts": [
+      "1760094028356"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T12:34:42.670Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760104450138",
+    "name": "hui",
+    "message": "Hello {{name}}, I wanted to follow up on our previous conversation. How can we assist you today?",
+    "selectedContacts": [
+      "1760094028356"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T13:54:10.326Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760106273443",
+    "name": "steve",
+    "message": "hi {{name}} blablabla sitaki kusikia- anywhere write this where are you located",
+    "selectedContacts": [
+      "1760092059123"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T14:24:33.522Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760107213971",
+    "name": "steve1",
+    "message": "Thank you {{name}} for your time. We appreciate your interest in our services.",
+    "selectedContacts": [
+      "1760092059123"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T14:40:14.166Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  },
+  {
+    "id": "1760109543089",
+    "name": "judycampaign",
+    "message": "Hello {{name}}, I wanted to follow up on our previous conversation. How can we assist you today?",
+    "selectedContacts": [
+      "1760108866013"
+    ],
+    "scheduleDate": null,
+    "status": "sent",
+    "createdAt": "2025-10-10T15:19:08.400Z",
+    "autoreplyEnabled": true,
+    "replies": [],
+    "replyStats": {
+      "totalReplies": 0,
+      "positive": 0,
+      "negative": 0,
+      "neutral": 0
+    }
+  }
+]

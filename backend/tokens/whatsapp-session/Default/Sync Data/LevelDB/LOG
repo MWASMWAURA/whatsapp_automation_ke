@@ -1,0 +1,4 @@
+2025/10/10-20:04:39.306 2300 Creating DB c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\Sync Data\LevelDB since it was missing.
+2025/10/10-20:04:39.340 2300 Reusing MANIFEST c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\Sync Data\LevelDB/MANIFEST-000001
+2025/10/10-20:04:39.341 2300 Recovering log #3
+2025/10/10-20:04:39.341 2300 Reusing old log c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\Sync Data\LevelDB/000003.log 

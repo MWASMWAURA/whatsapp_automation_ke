@@ -1,0 +1,7 @@
+2025/10/10-20:04:42.672 1520 Creating DB c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
+2025/10/10-20:04:42.685 1520 Reusing MANIFEST c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/10/10-20:04:42.686 1520 Recovering log #84
+2025/10/10-20:04:42.709 1520 Reusing old log c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000084.log 
+2025/10/10-20:04:42.709 1520 Delete type=2 #54
+2025/10/10-20:04:42.709 1520 Delete type=2 #83
+2025/10/10-20:04:42.709 1520 Delete type=2 #86

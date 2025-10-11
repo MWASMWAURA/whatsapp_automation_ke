@@ -1,0 +1,22 @@
+[
+  {
+    "id": "1760090516156",
+    "campaignId": "1760090472466",
+    "contactId": "1",
+    "message": "Hello",
+    "sentiment": "neutral",
+    "timestamp": "2025-10-10T10:01:56.156Z",
+    "isAIResponded": false,
+    "aiResponse": null
+  },
+  {
+    "id": "1760107285942",
+    "campaignId": "1760092277088",
+    "contactId": "1760092059123",
+    "message": "Where are you located??",
+    "sentiment": "neutral",
+    "timestamp": "2025-10-10T14:41:25.943Z",
+    "isAIResponded": false,
+    "aiResponse": null
+  }
+]

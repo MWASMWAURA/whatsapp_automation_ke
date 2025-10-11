@@ -1,0 +1,4 @@
+2025/10/10-20:04:39.644 70c Creating DB c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\shared_proto_db\metadata since it was missing.
+2025/10/10-20:04:39.682 70c Reusing MANIFEST c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\shared_proto_db\metadata/MANIFEST-000001
+2025/10/10-20:04:39.683 70c Recovering log #3
+2025/10/10-20:04:39.683 70c Reusing old log c:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session\Default\shared_proto_db\metadata/000003.log 
