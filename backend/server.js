@@ -38,6 +38,7 @@ let reconnectInterval = null;
 let isReconnecting = false;
 let browserLaunched = false;
 let validSession = false;
+let pendingReplies = []; // Store failed AI replies for retry
 
 // Function to convert ASCII QR code to image
 function generateAsciiQrImage(qrData) {
@@ -159,6 +160,12 @@ function startReconnection() {
               clearInterval(reconnectInterval);
               reconnectInterval = null;
             }
+
+            // Process any pending AI replies that failed during disconnection
+            if (pendingReplies.length > 0) {
+              console.log(`🔄 Processing ${pendingReplies.length} pending AI replies...`);
+              processPendingReplies();
+            }
           } else if (status === 'browserClose' || status === 'disconnected' || status === 'notLogged') {
             browserLaunched = false;
             validSession = false;
@@ -175,8 +182,8 @@ function startReconnection() {
         try {
           console.log('📨 Received message:', message.body, 'from:', message.from);
 
-          // Skip messages from ourselves, groups, or status broadcasts
-          if (message.fromMe || message.from.includes('@g.us') || message.from === 'status@broadcast') {
+          // Skip messages from ourselves not, groups, or status broadcasts
+          if (message.from.includes('@g.us') || message.from === 'status@broadcast') {
             return;
           }
 
@@ -547,8 +554,8 @@ app.post('/api/start-session', async (req, res) => {
       try {
         console.log('📨 Received message:', message.body, 'from:', message.from);
 
-        // Skip messages from ourselves, groups, or status broadcasts
-        if (message.fromMe || message.from.includes('@g.us') || message.from === 'status@broadcast') {
+        // Skip messages from ourselves not, groups, or status broadcasts
+        if (message.from.includes('@g.us') || message.from === 'status@broadcast') {
           return;
         }
 
@@ -1177,6 +1184,53 @@ app.post('/send-reminder', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Function to process pending AI replies when connection is restored
+async function processPendingReplies() {
+  if (pendingReplies.length === 0 || !client) return;
+
+  console.log(`🔄 Processing ${pendingReplies.length} pending AI replies...`);
+
+  for (let i = pendingReplies.length - 1; i >= 0; i--) {
+    const pendingReply = pendingReplies[i];
+
+    try {
+      // Check if this reply still needs AI response (not manually handled)
+      const replies = JSON.parse(fs.readFileSync('./data/replies.json', 'utf8'));
+      const currentReply = replies.find((r) => r.id === pendingReply.replyId);
+
+      if (currentReply && !currentReply.isAIResponded && !currentReply.isHumanResponded) {
+        // Still needs AI response, try to send now
+        await client.sendText(pendingReply.phone, pendingReply.message);
+        console.log(`✅ Sent pending AI reply to ${pendingReply.phone}`);
+
+        // Update the reply record
+        currentReply.isAIResponded = true;
+        currentReply.aiResponse = pendingReply.message;
+        currentReply.aiResponseTime = new Date().toISOString();
+        fs.writeFileSync('./data/replies.json', JSON.stringify(replies, null, 2));
+
+        // Remove from pending list
+        pendingReplies.splice(i, 1);
+      } else {
+        // Reply was already handled manually, remove from pending
+        pendingReplies.splice(i, 1);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to send pending reply to ${pendingReply.phone}:`, error.message);
+      // Keep in pending list for next retry
+    }
+  }
+
+  console.log(`📊 Pending replies processed. ${pendingReplies.length} remaining.`);
+
+  // Save updated pending replies
+  try {
+    fs.writeFileSync('./data/pending-replies.json', JSON.stringify(pendingReplies, null, 2));
+  } catch (error) {
+    console.error('Error saving pending replies:', error);
+  }
+}
 
 // Reset sent campaigns history
 app.post('/reset-sent-campaigns', (req, res) => {

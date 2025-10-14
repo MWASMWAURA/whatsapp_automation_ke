@@ -1,5 +1,5 @@
-2025/10/11-20:59:18.257 3ab8 Creating DB C:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session-new\Default\Local Storage\leveldb since it was missing.
-2025/10/11-20:59:18.341 3ab8 Reusing MANIFEST C:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session-new\Default\Local Storage\leveldb/MANIFEST-000001
-2025/10/11-22:04:20.771 3ab8 Level-0 table #5: started
-2025/10/11-22:04:20.786 3ab8 Level-0 table #5: 18391 bytes OK
-2025/10/11-22:04:20.792 3ab8 Delete type=0 #3
+2025/10/13-19:31:30.389 33a4 Creating DB C:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session-new\Default\Local Storage\leveldb since it was missing.
+2025/10/13-19:31:30.944 33a4 Reusing MANIFEST C:\Users\MWAURA\Downloads\whatsapp_outreach\backend\tokens\whatsapp-session-new\Default\Local Storage\leveldb/MANIFEST-000001
+2025/10/13-20:32:32.271 33a4 Level-0 table #5: started
+2025/10/13-20:32:32.368 33a4 Level-0 table #5: 18049 bytes OK
+2025/10/13-20:32:32.373 33a4 Delete type=0 #3

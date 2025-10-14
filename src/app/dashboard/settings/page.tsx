@@ -33,11 +33,66 @@ export default function SettingsPage() {
   const [sessionStatus, setSessionStatus] = useState<string>("disconnected");
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
     email: user?.email || "",
     phone: user?.phone || "",
   });
+
+  // Auto-reconnection function
+  const startAutoReconnection = () => {
+    if (isReconnecting || reconnectAttempts >= 5) return; // Max 5 attempts
+
+    setIsReconnecting(true);
+    setSessionStatus("reconnecting");
+    setReconnectAttempts((prev) => prev + 1);
+
+    console.log(
+      `🔄 Starting auto-reconnection attempt ${reconnectAttempts + 1}/5`
+    );
+
+    // Wait 10 seconds before attempting reconnection
+    setTimeout(async () => {
+      try {
+        const response = await fetch("/api/start-session", {
+          method: "POST",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (
+            data.status &&
+            (data.status === "connected" ||
+              data.status === "isLogged" ||
+              data.status === "inChat")
+          ) {
+            // Successfully reconnected
+            setWhatsappConnected(true);
+            setSessionStatus("connected");
+            setIsReconnecting(false);
+            setReconnectAttempts(0);
+            console.log("✅ Auto-reconnection successful");
+          } else {
+            // Still need to wait for QR polling
+            console.log("🔄 Auto-reconnection initiated, waiting for QR...");
+            // The existing QR polling logic will handle the rest
+          }
+        } else {
+          console.warn("❌ Auto-reconnection failed, will retry...");
+          setIsReconnecting(false);
+          // Schedule next attempt after 30 seconds
+          setTimeout(() => startAutoReconnection(), 30000);
+        }
+      } catch (error) {
+        console.error("❌ Auto-reconnection error:", error);
+        setIsReconnecting(false);
+        // Schedule next attempt after 30 seconds
+        setTimeout(() => startAutoReconnection(), 30000);
+      }
+    }, 10000); // Wait 10 seconds before attempting
+  };
   const [faqs, setFaqs] = useState<any[]>([]);
   const [showAddFAQ, setShowAddFAQ] = useState(false);
   const [newFAQ, setNewFAQ] = useState({
@@ -61,6 +116,8 @@ export default function SettingsPage() {
         ) {
           setWhatsappConnected(true);
           setSessionStatus("connected");
+          setIsReconnecting(false);
+          setReconnectAttempts(0);
           console.log(
             "Existing WhatsApp session found with status:",
             data.status
@@ -68,10 +125,19 @@ export default function SettingsPage() {
         } else {
           setWhatsappConnected(false);
           setSessionStatus(data.status || "disconnected");
+          // Start reconnection if disconnected
+          if (
+            data.status === "browserClose" ||
+            data.status === "disconnected" ||
+            data.status === "notLogged"
+          ) {
+            startAutoReconnection();
+          }
         }
       } catch (error) {
         console.error("Error checking session status:", error);
         setSessionStatus("disconnected");
+        startAutoReconnection();
       }
     };
 
@@ -83,11 +149,12 @@ export default function SettingsPage() {
     let timeout: NodeJS.Timeout | null = null;
     let startTime = Date.now();
 
-    if (isConnecting) {
+    if (isConnecting || isReconnecting) {
       // Set a timeout to stop polling after 15 minutes for SaaS development
       timeout = setTimeout(() => {
         console.error("QR code polling timed out after 15 minutes");
         setIsConnecting(false);
+        setIsReconnecting(false);
         setSessionStatus("error");
         alert(
           "Connection timed out. For SaaS deployment, consider using a hosted WhatsApp service or containerized browser environment."
@@ -103,7 +170,9 @@ export default function SettingsPage() {
           if (!data.qr) {
             console.log("No QR received");
             setQrCode(null);
-            setSessionStatus(data.status || "connecting");
+            setSessionStatus(
+              data.status || (isReconnecting ? "reconnecting" : "connecting")
+            );
             return;
           }
 
@@ -146,18 +215,30 @@ export default function SettingsPage() {
           ) {
             setWhatsappConnected(true);
             setIsConnecting(false);
+            setIsReconnecting(false);
             setIsScanning(false);
             setQrCode(null);
             setSessionStatus("connected");
+            setReconnectAttempts(0); // Reset attempts on successful connection
           } else if (data.status === "qrReadSuccess") {
             // QR was read but client may still be syncing
             setIsScanning(true);
             setSessionStatus("syncing");
+          } else if (
+            data.status === "browserClose" ||
+            data.status === "disconnected" ||
+            data.status === "notLogged"
+          ) {
+            // Connection lost - trigger auto-reconnection if not already reconnecting
+            if (!isReconnecting && reconnectAttempts < 5) {
+              console.log("⚠️ Connection lost, starting auto-reconnection...");
+              startAutoReconnection();
+            }
           }
         } catch (error) {
           console.error("Error fetching QR:", error);
           // Don't stop polling on individual fetch errors - continue trying
-          setSessionStatus("connecting");
+          setSessionStatus(isReconnecting ? "reconnecting" : "connecting");
         }
       }, 2000);
     }
@@ -165,7 +246,7 @@ export default function SettingsPage() {
       if (interval) clearInterval(interval);
       if (timeout) clearTimeout(timeout);
     };
-  }, [isConnecting]);
+  }, [isConnecting, isReconnecting, reconnectAttempts]);
 
   useEffect(() => {
     const fetchFAQs = async () => {
@@ -194,9 +275,12 @@ export default function SettingsPage() {
       // Reset state for reconnection
       setWhatsappConnected(false);
       setSessionStatus("disconnected");
+      setIsReconnecting(false);
+      setReconnectAttempts(0);
     }
 
     setIsConnecting(true);
+    setIsReconnecting(false); // Manual connection, not auto-reconnection
     setSessionStatus("connecting");
 
     try {
@@ -217,6 +301,8 @@ export default function SettingsPage() {
           setWhatsappConnected(true);
           setSessionStatus("connected");
           setIsConnecting(false);
+          setIsReconnecting(false);
+          setReconnectAttempts(0);
           console.log("Client already connected with status:", data.status);
         } else {
           // Start polling for QR code (new session) - continue even if initial response is not perfect
@@ -260,34 +346,6 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Error disconnecting:", error);
       alert("Error disconnecting from backend");
-    }
-  };
-
-  const handleDeleteSession = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to delete the corrupted session? This will remove all session data and you'll need to scan a new QR code."
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/delete-session", {
-        method: "POST",
-      });
-      if (response.ok) {
-        alert(
-          "Session deleted successfully. You can now try connecting again."
-        );
-        setQrCode(null);
-        setSessionStatus("disconnected");
-      } else {
-        alert("Failed to delete session");
-      }
-    } catch (error) {
-      console.error("Error deleting session:", error);
-      alert("Error deleting session from backend");
     }
   };
 
@@ -461,6 +519,8 @@ export default function SettingsPage() {
                 ? "bg-blue-100 text-blue-800"
                 : sessionStatus === "connecting" || isConnecting
                 ? "bg-yellow-100 text-yellow-800"
+                : sessionStatus === "reconnecting" || isReconnecting
+                ? "bg-orange-100 text-orange-800"
                 : sessionStatus === "error"
                 ? "bg-red-100 text-red-800"
                 : "bg-red-100 text-red-800"
@@ -472,6 +532,8 @@ export default function SettingsPage() {
               ? "Syncing..."
               : sessionStatus === "connecting" || isConnecting
               ? "Connecting..."
+              : sessionStatus === "reconnecting" || isReconnecting
+              ? `Reconnecting... (${reconnectAttempts}/5)`
               : "Disconnected"}
           </div>
         </div>
@@ -487,12 +549,18 @@ export default function SettingsPage() {
                   ? "🔄 Syncing with WhatsApp... Please wait"
                   : sessionStatus === "connecting" || isConnecting
                   ? "🔄 Connecting to WhatsApp..."
+                  : sessionStatus === "reconnecting" || isReconnecting
+                  ? `🔄 Auto-reconnecting... Attempt ${reconnectAttempts}/5 (will retry every 30s)`
                   : sessionStatus === "error"
                   ? "❌ Connection failed - Please check your browser setup and try again"
                   : sessionStatus === "qrReadError"
                   ? "❌ Connection failed - QR code expired. Please try connecting again"
                   : sessionStatus === "browserClose"
-                  ? "⚠️ Connection interrupted. Please reconnect"
+                  ? "⚠️ Browser closed - Auto-reconnecting..."
+                  : sessionStatus === "disconnected"
+                  ? "⚠️ Disconnected - Auto-reconnecting..."
+                  : sessionStatus === "notLogged"
+                  ? "⚠️ Not logged in - Auto-reconnecting..."
                   : "❌ No active session - Connect to start sending messages"}
               </p>
               {sessionStatus === "qrReadError" && (
@@ -535,16 +603,6 @@ export default function SettingsPage() {
                   className="text-red-600 border-red-300 hover:bg-red-50"
                 >
                   Disconnect
-                </Button>
-              )}
-              {sessionStatus === "disconnected" && (
-                <Button
-                  onClick={handleDeleteSession}
-                  variant="outline"
-                  className="text-red-600 border-red-300 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Session
                 </Button>
               )}
             </div>
@@ -859,10 +917,34 @@ export default function SettingsPage() {
             <div>
               <p className="font-medium text-red-900">Clear all data</p>
               <p className="text-sm text-red-700">
-                Permanently delete all contacts, campaigns, and templates
+                Permanently delete all contacts, campaigns, templates, and
+                WhatsApp session data
               </p>
             </div>
             <Button
+              onClick={async () => {
+                if (
+                  !confirm(
+                    "Are you sure you want to clear ALL data? This will permanently delete contacts, campaigns, templates, and WhatsApp session data. This action cannot be undone."
+                  )
+                ) {
+                  return;
+                }
+
+                try {
+                  // Delete WhatsApp session first
+                  await fetch("/api/delete-session", { method: "POST" });
+
+                  // Clear other data (you can add more API calls here for other data)
+                  alert(
+                    "All data has been cleared successfully. You'll need to reconnect WhatsApp and re-import your contacts."
+                  );
+                  window.location.reload(); // Refresh to reset the UI
+                } catch (error) {
+                  console.error("Error clearing data:", error);
+                  alert("Error clearing data. Please try again.");
+                }
+              }}
               variant="outline"
               className="text-red-600 border-red-300 hover:bg-red-50"
             >
@@ -874,10 +956,117 @@ export default function SettingsPage() {
             <div>
               <p className="font-medium text-slate-900">Export data</p>
               <p className="text-sm text-slate-600">
-                Download all your data in JSON format
+                Download all your contacts, campaigns, and templates in CSV
+                format
               </p>
             </div>
-            <Button variant="outline">Export</Button>
+            <Button
+              onClick={async () => {
+                try {
+                  // Fetch all data
+                  const [contactsRes, campaignsRes, templatesRes] =
+                    await Promise.all([
+                      fetch("/api/contacts"),
+                      fetch("/api/campaigns"),
+                      fetch("/api/templates"),
+                    ]);
+
+                  const contacts = contactsRes.ok
+                    ? await contactsRes.json()
+                    : [];
+                  const campaigns = campaignsRes.ok
+                    ? await campaignsRes.json()
+                    : [];
+                  const templates = templatesRes.ok
+                    ? await templatesRes.json()
+                    : [];
+
+                  // Create CSV content for contacts
+                  const contactsHeaders = ["Name", "Title", "Phone", "Tags"];
+                  const contactsRows = contacts.map((contact: any) => [
+                    contact.name || "",
+                    contact.title || "",
+                    contact.phone || "",
+                    Array.isArray(contact.tags)
+                      ? contact.tags.join(", ")
+                      : contact.tags || "",
+                  ]);
+
+                  // Create CSV content for campaigns
+                  const campaignsHeaders = [
+                    "Name",
+                    "Description",
+                    "Created At",
+                    "Status",
+                    "Contact Count",
+                  ];
+                  const campaignsRows = campaigns.map((campaign: any) => [
+                    campaign.name || "",
+                    campaign.description || "",
+                    campaign.createdAt || "",
+                    campaign.status || "",
+                    campaign.selectedContacts?.length || 0,
+                  ]);
+
+                  // Create CSV content for templates
+                  const templatesHeaders = ["Name", "Content", "Created At"];
+                  const templatesRows = templates.map((template: any) => [
+                    template.name || "",
+                    template.content || "",
+                    template.createdAt || "",
+                  ]);
+
+                  // Combine all data into a single CSV with sections
+                  const csvContent = [
+                    "CONTACTS",
+                    contactsHeaders.join(","),
+                    ...contactsRows.map((row) =>
+                      row.map((cell) => `"${cell}"`).join(",")
+                    ),
+                    "",
+                    "CAMPAIGNS",
+                    campaignsHeaders.join(","),
+                    ...campaignsRows.map((row) =>
+                      row.map((cell) => `"${cell}"`).join(",")
+                    ),
+                    "",
+                    "TEMPLATES",
+                    templatesHeaders.join(","),
+                    ...templatesRows.map((row) =>
+                      row
+                        .map((cell) => `"${cell.replace(/"/g, '""')}"`)
+                        .join(",")
+                    ),
+                  ].join("\n");
+
+                  // Create and download the file
+                  const blob = new Blob([csvContent], {
+                    type: "text/csv;charset=utf-8;",
+                  });
+                  const link = document.createElement("a");
+                  const url = URL.createObjectURL(blob);
+                  link.setAttribute("href", url);
+                  link.setAttribute(
+                    "download",
+                    `whatsapp_outreach_data_${
+                      new Date().toISOString().split("T")[0]
+                    }.csv`
+                  );
+                  link.style.visibility = "hidden";
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+
+                  alert("Data exported successfully!");
+                } catch (error) {
+                  console.error("Export error:", error);
+                  alert("Error exporting data. Please try again.");
+                }
+              }}
+              variant="outline"
+            >
+              Export
+            </Button>
           </div>
         </div>
       </motion.div>

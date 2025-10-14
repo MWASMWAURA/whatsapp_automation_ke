@@ -21,6 +21,7 @@ import {
   CSVProcessingResponse,
 } from "@/lib/ai";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 
 interface Contact {
   id: string;
@@ -74,6 +75,75 @@ export default function ContactsPage() {
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [cleaningPhones, setCleaningPhones] = useState(false);
+  const [cleanedData, setCleanedData] = useState<any[]>([]);
+  const [showCleanedPreview, setShowCleanedPreview] = useState(false);
+
+  // Auto-detect columns based on headers and sample data
+  const autoDetectColumns = (headers: string[], sampleData: any[]) => {
+    const mapping = { name: "", title: "", phone: "", tags: "" };
+
+    headers.forEach((header) => {
+      const lowerHeader = header.toLowerCase();
+
+      // Name detection
+      if (
+        lowerHeader.includes("name") ||
+        lowerHeader.includes("first") ||
+        lowerHeader.includes("full")
+      ) {
+        if (!mapping.name) mapping.name = header;
+      }
+
+      // Title/Position detection
+      if (
+        lowerHeader.includes("title") ||
+        lowerHeader.includes("position") ||
+        lowerHeader.includes("job") ||
+        lowerHeader.includes("role")
+      ) {
+        if (!mapping.title) mapping.title = header;
+      }
+
+      // Phone detection
+      if (
+        lowerHeader.includes("phone") ||
+        lowerHeader.includes("mobile") ||
+        lowerHeader.includes("tel") ||
+        lowerHeader.includes("number")
+      ) {
+        if (!mapping.phone) mapping.phone = header;
+      }
+
+      // Tags detection
+      if (
+        lowerHeader.includes("tag") ||
+        lowerHeader.includes("category") ||
+        lowerHeader.includes("group")
+      ) {
+        if (!mapping.tags) mapping.tags = header;
+      }
+    });
+
+    // If no automatic detection, try to infer from sample data
+    if (!mapping.phone && sampleData.length > 0) {
+      headers.forEach((header) => {
+        const sampleValue = String(sampleData[0][header] || "").toLowerCase();
+        // Check if it looks like a phone number
+        if (/^\+?\d{7,15}$/.test(sampleValue.replace(/\s/g, ""))) {
+          if (!mapping.phone) mapping.phone = header;
+        }
+      });
+    }
+
+    return mapping;
+  };
+  const [columnMapping, setColumnMapping] = useState({
+    name: "",
+    title: "",
+    phone: "",
+    tags: "",
+  });
+  const [showColumnMapping, setShowColumnMapping] = useState(false);
   const [aiChatMessages, setAiChatMessages] = useState<
     Array<{ role: "user" | "assistant"; content: string }>
   >([]);
@@ -104,32 +174,77 @@ export default function ContactsPage() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
       "text/csv": [".csv"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+        ".xlsx",
+      ],
+      "application/vnd.ms-excel": [".xls"],
     },
     onDrop: async (acceptedFiles) => {
       if (acceptedFiles.length === 0) return;
 
       setUploadLoading(true);
       const file = acceptedFiles[0];
+      const fileExtension = file.name.split(".").pop()?.toLowerCase();
 
-      Papa.parse(
-        file as any,
-        {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results: Papa.ParseResult<any>) => {
-            const headers = results.meta.fields || [];
-            setCsvHeaders(headers);
-            setCsvPreview(results.data);
-            setShowPreview(true);
-            setUploadLoading(false);
-          },
-          error: (error: any) => {
-            console.error("CSV parsing error:", error);
-            alert("Failed to parse CSV file. Please check the format.");
-            setUploadLoading(false);
-          },
-        } as any
-      );
+      try {
+        let parsedData: any[] = [];
+        let headers: string[] = [];
+
+        if (fileExtension === "csv") {
+          // Parse CSV files
+          const result = await new Promise<Papa.ParseResult<any>>(
+            (resolve, reject) => {
+              Papa.parse(
+                file as any,
+                {
+                  header: true,
+                  skipEmptyLines: true,
+                  complete: resolve,
+                  error: reject,
+                } as any
+              );
+            }
+          );
+
+          headers = result.meta.fields || [];
+          parsedData = result.data;
+        } else if (fileExtension === "xlsx" || fileExtension === "xls") {
+          // Parse Excel files
+          const arrayBuffer = await file.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+
+          // Convert to JSON with headers
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          if (jsonData.length > 0) {
+            headers = (jsonData[0] as any[]).map((h) => String(h || ""));
+            parsedData = jsonData.slice(1).map((row: any) => {
+              const obj: any = {};
+              headers.forEach((header, index) => {
+                obj[header] = row[index] || "";
+              });
+              return obj;
+            });
+          }
+        }
+
+        setCsvHeaders(headers);
+        setCsvPreview(parsedData);
+        setShowPreview(true);
+        setUploadLoading(false);
+
+        // Auto-detect columns
+        const autoDetectedMapping = autoDetectColumns(headers, parsedData);
+        setColumnMapping(autoDetectedMapping);
+      } catch (error) {
+        console.error("File parsing error:", error);
+        alert(
+          `Failed to parse ${fileExtension?.toUpperCase()} file. Please check the format.`
+        );
+        setUploadLoading(false);
+      }
     },
   });
 
@@ -230,9 +345,24 @@ export default function ContactsPage() {
     setShowDeleteModal(true);
   };
 
-  const confirmDeleteContact = () => {
+  const confirmDeleteContact = async () => {
     if (contactToDelete) {
-      setContacts(contacts.filter((c) => c.id !== contactToDelete));
+      try {
+        const response = await fetch(`/api/contacts?id=${contactToDelete}`, {
+          method: "DELETE",
+        });
+
+        if (response.ok) {
+          setContacts(contacts.filter((c) => c.id !== contactToDelete));
+          alert("Contact deleted successfully");
+        } else {
+          alert("Failed to delete contact");
+        }
+      } catch (error) {
+        console.error("Error deleting contact:", error);
+        alert("Error deleting contact");
+      }
+
       setShowDeleteModal(false);
       setContactToDelete(null);
     }
@@ -244,24 +374,56 @@ export default function ContactsPage() {
     // Find phone column
     const phoneColumn = csvHeaders.find(
       (h) =>
-        h.toLowerCase().includes("phone") || h.toLowerCase().includes("number")
+        String(h || "")
+          .toLowerCase()
+          .includes("phone") ||
+        String(h || "")
+          .toLowerCase()
+          .includes("number")
     );
 
     if (!phoneColumn) {
-      alert("No phone column found in CSV");
+      alert("No phone column found in the file");
       setCleaningPhones(false);
       return;
     }
 
     const cleanedPreview = [...csvPreview];
+    const cleanedContacts = [];
 
     for (let i = 0; i < cleanedPreview.length; i++) {
-      const phone = cleanedPreview[i][phoneColumn];
+      const row = cleanedPreview[i];
+      const phone = row[phoneColumn];
+
       if (phone && phone.trim()) {
         try {
           const result = await cleanPhoneNumber(phone);
           if (result.success && result.data) {
             cleanedPreview[i][phoneColumn] = result.data;
+
+            // Use column mapping for extracting data
+            const name = columnMapping.name
+              ? row[columnMapping.name] || ""
+              : row.Name || row.name || "";
+            const title = columnMapping.title
+              ? row[columnMapping.title] || ""
+              : row.Title || row.title || "";
+            const tags = columnMapping.tags
+              ? row[columnMapping.tags] || ""
+              : row.Tags || row.tags || "";
+
+            cleanedContacts.push({
+              name: name.trim(),
+              title: title.trim(),
+              phone: result.data,
+              tags: tags
+                ? tags
+                    .split(",")
+                    .map((tag: string) => tag.trim())
+                    .filter(Boolean)
+                : [],
+              originalPhone: phone.trim(),
+            });
           }
         } catch (error) {
           console.error(`Failed to clean phone for row ${i}:`, error);
@@ -270,8 +432,12 @@ export default function ContactsPage() {
     }
 
     setCsvPreview(cleanedPreview);
+    setCleanedData(cleanedContacts);
     setCleaningPhones(false);
-    alert("Phone numbers cleaned successfully!");
+    setShowCleanedPreview(true);
+    alert(
+      "Phone numbers cleaned successfully! Check the cleaned data preview."
+    );
   };
 
   const handleImportContacts = async () => {
@@ -279,15 +445,23 @@ export default function ContactsPage() {
     const errors: string[] = [];
 
     csvPreview.forEach((row: any, index: number) => {
-      const name = row.Name || row.name || "";
-      const title = row.Title || row.title || "";
-      const phone =
-        row.Phone ||
-        row.phone ||
-        row["Phone Number"] ||
-        row["phone number"] ||
-        "";
-      const tags = row.Tags || row.tags || "";
+      // Use column mapping if available, otherwise fall back to auto-detection
+      const name = columnMapping.name
+        ? row[columnMapping.name] || ""
+        : row.Name || row.name || "";
+      const title = columnMapping.title
+        ? row[columnMapping.title] || ""
+        : row.Title || row.title || "";
+      const phone = columnMapping.phone
+        ? row[columnMapping.phone] || ""
+        : row.Phone ||
+          row.phone ||
+          row["Phone Number"] ||
+          row["phone number"] ||
+          "";
+      const tags = columnMapping.tags
+        ? row[columnMapping.tags] || ""
+        : row.Tags || row.tags || "";
 
       if (!name.trim() || !phone.trim()) {
         errors.push(`Row ${index + 2}: Name and Phone are required`);
@@ -463,13 +637,14 @@ export default function ContactsPage() {
           )}
           <p className="text-slate-600">
             {uploadLoading
-              ? "Processing CSV file..."
+              ? "Processing file..."
               : isDragActive
-              ? "Drop the CSV file here..."
-              : "Drag & drop a CSV file here, or click to select"}
+              ? "Drop the file here..."
+              : "Drag & drop a file here, or click to select"}
           </p>
           <p className="text-sm text-slate-500 mt-2">
-            Supports CSV files with Name, Title, Phone columns
+            Supports CSV, Excel (.xlsx, .xls) files with Name, Title, Phone
+            columns
           </p>
         </div>
       </motion.div>
@@ -637,11 +812,61 @@ export default function ContactsPage() {
               Export
             </Button>
             <Button
+              onClick={async () => {
+                if (selectedContacts.length === 0) return;
+
+                const confirmDelete = window.confirm(
+                  `Are you sure you want to delete ${
+                    selectedContacts.length
+                  } selected contact${
+                    selectedContacts.length > 1 ? "s" : ""
+                  }? This action cannot be undone.`
+                );
+
+                if (!confirmDelete) return;
+
+                try {
+                  // Delete all selected contacts from backend
+                  const deletePromises = selectedContacts.map((contactId) =>
+                    fetch(`/api/contacts?id=${contactId}`, {
+                      method: "DELETE",
+                    })
+                  );
+
+                  const results = await Promise.all(deletePromises);
+                  const successCount = results.filter((r) => r.ok).length;
+                  const failCount = results.length - successCount;
+
+                  // Update local state
+                  setContacts(
+                    contacts.filter((c) => !selectedContacts.includes(c.id))
+                  );
+                  setSelectedContacts([]);
+
+                  if (failCount === 0) {
+                    alert(
+                      `Successfully deleted ${successCount} contact${
+                        successCount > 1 ? "s" : ""
+                      }`
+                    );
+                  } else {
+                    alert(
+                      `Deleted ${successCount} contact${
+                        successCount > 1 ? "s" : ""
+                      }, but ${failCount} failed to delete`
+                    );
+                  }
+                } catch (error) {
+                  console.error("Bulk delete error:", error);
+                  alert("Error deleting contacts. Please try again.");
+                }
+              }}
               variant="outline"
               size="sm"
               className="text-red-600 hover:text-red-700"
+              disabled={selectedContacts.length === 0}
             >
-              Delete Selected
+              Delete Selected ({selectedContacts.length})
             </Button>
           </div>
         </motion.div>
@@ -747,6 +972,278 @@ export default function ContactsPage() {
         </div>
       )}
 
+      {/* Cleaned Data Preview Modal */}
+      {showCleanedPreview && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-4xl mx-4 shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">
+                ✅ Cleaned Contacts Data ({cleanedData.length} contacts)
+              </h3>
+              <button
+                onClick={() => setShowCleanedPreview(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto border border-slate-300 rounded-lg">
+              <table className="w-full border-collapse">
+                <thead className="bg-green-50 sticky top-0">
+                  <tr>
+                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
+                      Name
+                    </th>
+                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
+                      Title
+                    </th>
+                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
+                      Phone (Cleaned)
+                    </th>
+                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
+                      Original Phone
+                    </th>
+                    <th className="border border-slate-300 px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
+                      Tags
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cleanedData.map((contact, index) => (
+                    <tr key={index} className="hover:bg-slate-50">
+                      <td className="border border-slate-300 px-4 py-2 text-sm text-slate-900">
+                        {contact.name}
+                      </td>
+                      <td className="border border-slate-300 px-4 py-2 text-sm text-slate-500">
+                        {contact.title}
+                      </td>
+                      <td className="border border-slate-300 px-4 py-2 text-sm font-mono text-green-700 bg-green-50">
+                        {contact.phone}
+                      </td>
+                      <td className="border border-slate-300 px-4 py-2 text-sm font-mono text-slate-500">
+                        {contact.originalPhone}
+                      </td>
+                      <td className="border border-slate-300 px-4 py-2 text-sm text-slate-900">
+                        <div className="flex flex-wrap gap-1">
+                          {contact.tags.map((tag: string, tagIndex: number) => (
+                            <span
+                              key={tagIndex}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex gap-3 mt-4 pt-4 border-t border-slate-200">
+              <Button
+                onClick={() => {
+                  // Import the cleaned data
+                  const importPromises = cleanedData.map((contact) =>
+                    fetch("/api/contacts", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        name: contact.name,
+                        title: contact.title,
+                        phone: contact.phone,
+                        tags: contact.tags,
+                      }),
+                    })
+                  );
+
+                  Promise.all(importPromises)
+                    .then((results) => {
+                      const successCount = results.filter((r) => r.ok).length;
+                      alert(
+                        `Successfully imported ${successCount} cleaned contacts!`
+                      );
+                      setContacts((prev) => [
+                        ...prev,
+                        ...cleanedData.map((c) => ({
+                          id:
+                            Date.now().toString() +
+                            Math.random().toString(36).substr(2, 9),
+                          ...c,
+                        })),
+                      ]);
+                      setShowCleanedPreview(false);
+                      setShowPreview(false);
+                      setCsvPreview([]);
+                      setCsvHeaders([]);
+                      setCleanedData([]);
+                    })
+                    .catch((error) => {
+                      console.error("Import error:", error);
+                      alert("Error importing cleaned contacts");
+                    });
+                }}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                Import Cleaned Contacts
+              </Button>
+              <Button
+                onClick={() => setShowCleanedPreview(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Column Mapping Modal */}
+      {showColumnMapping && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Map Data Columns
+              </h3>
+              <button
+                onClick={() => setShowColumnMapping(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <p className="text-sm text-slate-600">
+                Select which columns contain the contact information. We've
+                auto-detected the most likely columns.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Name Column
+                  </label>
+                  <select
+                    value={columnMapping.name}
+                    onChange={(e) =>
+                      setColumnMapping({
+                        ...columnMapping,
+                        name: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select column...</option>
+                    {csvHeaders.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Title/Position Column
+                  </label>
+                  <select
+                    value={columnMapping.title}
+                    onChange={(e) =>
+                      setColumnMapping({
+                        ...columnMapping,
+                        title: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select column...</option>
+                    {csvHeaders.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Phone Number Column *
+                  </label>
+                  <select
+                    value={columnMapping.phone}
+                    onChange={(e) =>
+                      setColumnMapping({
+                        ...columnMapping,
+                        phone: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select column...</option>
+                    {csvHeaders.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Tags Column
+                  </label>
+                  <select
+                    value={columnMapping.tags}
+                    onChange={(e) =>
+                      setColumnMapping({
+                        ...columnMapping,
+                        tags: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select column...</option>
+                    {csvHeaders.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setShowColumnMapping(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowColumnMapping(false);
+                  // Apply the mapping to the preview
+                  console.log("Column mapping applied:", columnMapping);
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                disabled={!columnMapping.phone}
+              >
+                Apply Mapping
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CSV Preview Modal */}
       {showPreview && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
@@ -765,10 +1262,30 @@ export default function ContactsPage() {
 
             <div className="flex gap-4 mb-4">
               <Button
+                onClick={() => setShowColumnMapping(true)}
+                variant="outline"
+                className="border-purple-300 text-purple-600 hover:bg-purple-50"
+              >
+                Map Columns
+              </Button>
+              <Button
                 onClick={handleImportContacts}
                 className="bg-green-600 hover:bg-green-700"
               >
                 Import Contacts
+              </Button>
+              <Button
+                onClick={handleAICleanPhones}
+                disabled={cleaningPhones}
+                variant="outline"
+                className="border-blue-300 text-blue-600 hover:bg-blue-50"
+              >
+                {cleaningPhones ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Bot className="w-4 h-4 mr-2" />
+                )}
+                Clean Phone Numbers
               </Button>
             </div>
 

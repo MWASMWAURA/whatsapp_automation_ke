@@ -28,5 +28,15 @@
     "timestamp": "2025-10-11T18:27:12.860Z",
     "isAIResponded": false,
     "aiResponse": null
+  },
+  {
+    "id": "1760354603721",
+    "campaignId": "1760354576774",
+    "contactId": "1760094028356",
+    "message": "Hi",
+    "sentiment": "neutral",
+    "timestamp": "2025-10-13T11:23:23.721Z",
+    "isAIResponded": false,
+    "aiResponse": null
   }
 ]

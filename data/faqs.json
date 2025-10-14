@@ -5,5 +5,19 @@
     "answer": "ruiru",
     "category": "General",
     "createdAt": "2025-10-10T09:50:13.803Z"
+  },
+  {
+    "id": "1760351654101",
+    "question": "hi",
+    "answer": "Hello, how are you?",
+    "category": "Support",
+    "createdAt": "2025-10-13T10:34:14.101Z"
+  },
+  {
+    "id": "1760351654106",
+    "question": "hi",
+    "answer": "Hello, how are you?",
+    "category": "Support",
+    "createdAt": "2025-10-13T10:34:14.106Z"
   }
 ]

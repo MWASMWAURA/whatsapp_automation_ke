@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user has already replied to this contact
     const hasUserReplied = replies.some(
-      (reply: any) => reply.contactId === contactId && !reply.isAIResponded
+      (reply: any) => reply.contactId === contactId && reply.isHumanResponded
     );
 
     if (hasUserReplied) {
@@ -201,7 +201,28 @@ export async function POST(request: NextRequest) {
 
     if (!sendResult.success) {
       console.error('Failed to send WhatsApp message:', sendResult.error);
-      // Still return success to UI, but log the failure
+
+      // Store for retry when connection is restored
+      const pendingReplyData = {
+        replyId: replies.find((r: any) => r.campaignId === campaignId && r.contactId === contactId)?.id,
+        phone: phone,
+        message: aiResponse,
+        timestamp: new Date().toISOString(),
+        attemptCount: 1
+      };
+
+      // Add to pending replies (this will be handled by backend reconnection logic)
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/store-pending-reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pendingReplyData)
+        });
+      } catch (storeError) {
+        console.error('Failed to store pending reply:', storeError);
+      }
+
+      // Still return success to UI, but indicate message wasn't sent
       return NextResponse.json({
         response: aiResponse,
         success: true,
@@ -209,6 +230,7 @@ export async function POST(request: NextRequest) {
         sendError: sendResult.error,
         matchScore: matchResult.score,
         matchedFAQ: matchResult.faq.question,
+        queuedForRetry: true
       });
     }
 

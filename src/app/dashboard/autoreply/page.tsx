@@ -117,10 +117,11 @@ export default function AutoreplyPage() {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedReply) return;
 
+    const messageToSend = newMessage.trim();
     const userMessage = {
       id: Date.now().toString(),
       type: "user",
-      content: newMessage,
+      content: messageToSend,
       timestamp: new Date().toISOString(),
       sender: "You",
     };
@@ -129,45 +130,90 @@ export default function AutoreplyPage() {
     setNewMessage("");
 
     try {
-      const response = await fetch("/api/autoreply", {
+      // Get contact phone number
+      const contact = contacts.find((c) => c.id === selectedReply.contactId);
+      if (!contact) {
+        const errorMessage = {
+          id: (Date.now() + 1).toString(),
+          type: "system",
+          content: "Error: Could not find contact phone number",
+          timestamp: new Date().toISOString(),
+          sender: "System",
+        };
+        setChatMessages((prev) => [...prev, errorMessage]);
+        return;
+      }
+
+      // Send message via backend
+      const response = await fetch("/api/send-message", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userMessage: newMessage,
-          campaignId: selectedReply.campaignId,
-          contactId: selectedReply.contactId,
+          phone: contact.phone,
+          message: messageToSend,
         }),
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const result = await response.json();
 
-        if (data.shouldReply === false) {
-          // AI decided not to reply
-          const noReplyMessage = {
-            id: (Date.now() + 1).toString(),
-            type: "system",
-            content: `AI decided not to reply: ${data.message}`,
-            timestamp: new Date().toISOString(),
-            sender: "System",
-          };
-          setChatMessages((prev) => [...prev, noReplyMessage]);
-        } else {
-          // AI provided a response
-          const aiMessage = {
-            id: (Date.now() + 1).toString(),
-            type: "ai",
-            content: data.response,
-            timestamp: new Date().toISOString(),
-            sender: "AI Assistant",
-          };
-          setChatMessages((prev) => [...prev, aiMessage]);
+        // Add success message to chat
+        const successMessage = {
+          id: (Date.now() + 2).toString(),
+          type: "system",
+          content: "✅ Message sent successfully",
+          timestamp: new Date().toISOString(),
+          sender: "System",
+        };
+        setChatMessages((prev) => [...prev, successMessage]);
+
+        // Update the reply record to mark as human responded
+        await fetch(`/api/replies`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: selectedReply.id,
+            isHumanResponded: true,
+            humanResponse: messageToSend,
+            humanResponseTime: new Date().toISOString(),
+          }),
+        });
+
+        // Refresh replies to update the UI
+        const repliesResponse = await fetch(
+          `/api/replies?campaignIds=${selectedCampaigns.join(",")}`
+        );
+        if (repliesResponse.ok) {
+          const updatedReplies = await repliesResponse.json();
+          setReplies(updatedReplies);
         }
+      } else {
+        const error = await response.json();
+        const errorMessage = {
+          id: (Date.now() + 2).toString(),
+          type: "system",
+          content: `❌ Failed to send message: ${
+            error.error || "Unknown error"
+          }`,
+          timestamp: new Date().toISOString(),
+          sender: "System",
+        };
+        setChatMessages((prev) => [...prev, errorMessage]);
       }
     } catch (error) {
-      console.error("Failed to get AI response:", error);
+      console.error("Failed to send message:", error);
+      const errorMessage = {
+        id: (Date.now() + 2).toString(),
+        type: "system",
+        content: "❌ Failed to send message due to network error",
+        timestamp: new Date().toISOString(),
+        sender: "System",
+      };
+      setChatMessages((prev) => [...prev, errorMessage]);
     }
   };
 
