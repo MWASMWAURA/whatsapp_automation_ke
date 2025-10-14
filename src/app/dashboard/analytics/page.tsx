@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useUser } from "@/lib/user-context";
 import { motion } from "framer-motion";
 import {
   BarChart3,
@@ -59,8 +60,14 @@ const tagData = [
 ];
 
 export default function AnalyticsPage() {
+  const { user } = useUser();
   const [timeRange, setTimeRange] = useState("7d");
   const [selectedCampaign, setSelectedCampaign] = useState("all");
+
+  // Redirect if not authenticated
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="space-y-8">

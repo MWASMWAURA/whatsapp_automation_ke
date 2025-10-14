@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const authPayload = await authenticateRequest(request);
+    if (!authPayload) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { phone, message } = body;
 
@@ -20,6 +26,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        userId: authPayload.userId,
         phone: phone,
         message: message,
       }),

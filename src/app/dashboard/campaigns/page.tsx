@@ -46,6 +46,11 @@ interface Campaign {
 export default function CampaignsPage() {
   const { user } = useUser();
   const { templates } = useTemplates();
+
+  // Redirect if not authenticated
+  if (!user) {
+    return null;
+  }
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [campaignName, setCampaignName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");

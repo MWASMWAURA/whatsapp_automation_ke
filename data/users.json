@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1760427485130",
+    "email": "testuser1@example.com",
+    "password": "$2b$12$swqVEPl8DhDbtlCDTu.u2.wTmezqUQwvrL3PeZNDL2n5ibRFjJQae",
+    "name": "Test User 1",
+    "phone": "+12345678901",
+    "createdAt": "2025-10-14T07:38:05.518Z",
+    "updatedAt": "2025-10-14T07:38:05.533Z"
+  },
+  {
+    "id": "1760427566399",
+    "email": "testuser2@example.com",
+    "password": "$2b$12$8IY97HYhLQZA6RQuTM/icOptgMmsPzd8tkwb91hlHVF8K5tRzAbRm",
+    "name": "Test User 2",
+    "phone": "+12345678902",
+    "createdAt": "2025-10-14T07:39:26.810Z",
+    "updatedAt": "2025-10-14T07:39:26.811Z"
+  }
+]

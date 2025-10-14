@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useUser } from "@/lib/user-context";
 import { motion } from "framer-motion";
 import { FileText, Plus, Edit, Trash2, Eye, Bot } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useTemplates, Template } from "@/lib/templates";
 
 export default function TemplatesPage() {
+  const { user } = useUser();
   const { templates, addTemplate, updateTemplate, deleteTemplate } =
     useTemplates();
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
@@ -17,6 +19,11 @@ export default function TemplatesPage() {
     name: "John Doe",
     title: "CEO",
   });
+
+  // Redirect if not authenticated
+  if (!user) {
+    return null;
+  }
 
   const handleCreateTemplate = () => {
     setIsCreating(true);

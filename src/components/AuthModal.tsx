@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, Chrome, Phone } from "lucide-react";
+import { X, Mail, Chrome, Phone, Loader2 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { useUser } from "@/lib/user-context";
 
@@ -23,18 +23,55 @@ export default function AuthModal({
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock authentication with user context
-    if (mode === "signup" && name && phone) {
-      login(email, name, phone);
-    } else if (mode === "login") {
-      // For demo, just login with email as name and a default phone
-      login(email, email.split("@")[0], "+1234567890");
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const endpoint =
+        mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+      const body =
+        mode === "signup"
+          ? { email, password, name, phone }
+          : { email, password };
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Authentication failed");
+      }
+
+      // Store token in localStorage
+      localStorage.setItem("authToken", data.token);
+
+      // Update user context
+      login(data.user.email, data.user.name, data.user.phone);
+
+      onLogin();
+      onClose();
+
+      // Reset form
+      setEmail("");
+      setPassword("");
+      setName("");
+      setPhone("");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "An error occurred");
+    } finally {
+      setIsLoading(false);
     }
-    onLogin();
-    onClose();
   };
 
   return (
@@ -67,6 +104,11 @@ export default function AuthModal({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
               {mode === "signup" && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -136,8 +178,18 @@ export default function AuthModal({
               <Button
                 type="submit"
                 className="w-full bg-blue-600 hover:bg-blue-700"
+                disabled={isLoading}
               >
-                {mode === "login" ? "Sign In" : "Sign Up"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {mode === "login" ? "Signing In..." : "Signing Up..."}
+                  </>
+                ) : mode === "login" ? (
+                  "Sign In"
+                ) : (
+                  "Sign Up"
+                )}
               </Button>
             </form>
 

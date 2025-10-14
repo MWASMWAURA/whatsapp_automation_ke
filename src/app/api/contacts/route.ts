@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { withAuth } from '@/lib/middleware';
 
 // File-based storage for contacts
 const CONTACTS_FILE = path.join(process.cwd(), 'data', 'contacts.json');
@@ -55,67 +56,77 @@ function writeContacts(contacts: any[]): void {
   }
 }
 
-export async function GET() {
-  // Return all contacts
-  const contacts = readContacts();
-  return NextResponse.json(contacts);
+export async function GET(request: NextRequest) {
+  return withAuth(request, async (request, user) => {
+    // Return contacts for the authenticated user only
+    const contacts = readContacts();
+    const userContacts = contacts.filter((contact: any) => contact.userId === user.userId);
+    return NextResponse.json(userContacts);
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const contacts = readContacts();
-    const newContact = {
-      id: Date.now().toString(),
-      ...body,
-    };
+  return withAuth(request, async (request, user) => {
+    try {
+      const body = await request.json();
+      const contacts = readContacts();
+      const newContact = {
+        id: Date.now().toString(),
+        ...body,
+        userId: user.userId,
+      };
 
-    contacts.push(newContact);
-    writeContacts(contacts);
-    return NextResponse.json(newContact, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
-  }
+      contacts.push(newContact);
+      writeContacts(contacts);
+      return NextResponse.json(newContact, { status: 201 });
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    }
+  });
 }
 
 export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { id, ...updates } = body;
+  return withAuth(request, async (request, user) => {
+    try {
+      const body = await request.json();
+      const { id, ...updates } = body;
 
-    const contacts = readContacts();
-    const contactIndex = contacts.findIndex((c: any) => c.id === id);
-    if (contactIndex === -1) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      const contacts = readContacts();
+      const contactIndex = contacts.findIndex((c: any) => c.id === id && c.userId === user.userId);
+      if (contactIndex === -1) {
+        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      }
+
+      contacts[contactIndex] = { ...contacts[contactIndex], ...updates };
+      writeContacts(contacts);
+      return NextResponse.json(contacts[contactIndex]);
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
-
-    contacts[contactIndex] = { ...contacts[contactIndex], ...updates };
-    writeContacts(contacts);
-    return NextResponse.json(contacts[contactIndex]);
-  } catch (error) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
-  }
+  });
 }
 
 export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+  return withAuth(request, async (request, user) => {
+    try {
+      const { searchParams } = new URL(request.url);
+      const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json({ error: 'Contact ID required' }, { status: 400 });
+      if (!id) {
+        return NextResponse.json({ error: 'Contact ID required' }, { status: 400 });
+      }
+
+      const contacts = readContacts();
+      const contactIndex = contacts.findIndex((c: any) => c.id === id && c.userId === user.userId);
+      if (contactIndex === -1) {
+        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      }
+
+      contacts.splice(contactIndex, 1);
+      writeContacts(contacts);
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
-
-    const contacts = readContacts();
-    const contactIndex = contacts.findIndex((c: any) => c.id === id);
-    if (contactIndex === -1) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
-    }
-
-    contacts.splice(contactIndex, 1);
-    writeContacts(contacts);
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
-  }
+  });
 }

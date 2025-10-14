@@ -30,15 +30,15 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
-let client = null;
-let qrCode = null;
-let currentQr = null;
-let sessionStatus = 'disconnected';
-let reconnectInterval = null;
-let isReconnecting = false;
-let browserLaunched = false;
-let validSession = false;
-let pendingReplies = []; // Store failed AI replies for retry
+let clients = {}; // Map of userId -> client
+let qrCodes = {}; // Map of userId -> qrCode
+let currentQrs = {}; // Map of userId -> currentQr
+let sessionStatuses = {}; // Map of userId -> sessionStatus
+let reconnectIntervals = {}; // Map of userId -> reconnectInterval
+let isReconnectingMap = {}; // Map of userId -> isReconnecting
+let browserLaunchedMap = {}; // Map of userId -> browserLaunched
+let validSessions = {}; // Map of userId -> validSession
+let pendingReplies = {}; // Map of userId -> pendingReplies array
 
 // Function to convert ASCII QR code to image
 function generateAsciiQrImage(qrData) {
@@ -81,26 +81,26 @@ function generateAsciiQrImage(qrData) {
   });
 }
 
-// Function to start reconnection attempts
-function startReconnection() {
-  if (isReconnecting) return;
+// Function to start reconnection attempts for a specific user
+function startReconnection(userId) {
+  if (isReconnectingMap[userId]) return;
 
-  isReconnecting = true;
-  console.log('🔄 Starting automatic reconnection...');
+  isReconnectingMap[userId] = true;
+  console.log(`🔄 Starting automatic reconnection for user ${userId}...`);
 
-  reconnectInterval = setInterval(async () => {
+  reconnectIntervals[userId] = setInterval(async () => {
     try {
-      console.log('🔄 Attempting to reconnect...');
+      console.log(`🔄 Attempting to reconnect for user ${userId}...`);
 
       // Close existing client if it exists
-      if (client) {
-        await client.close();
-        client = null;
+      if (clients[userId]) {
+        await clients[userId].close();
+        clients[userId] = null;
       }
 
       // Create new client
-      client = await wppconnect.create({
-        session: 'whatsapp-session-new',
+      clients[userId] = await wppconnect.create({
+        session: `whatsapp-session-${userId}`,
         puppeteer: {
           headless: true,
           protocolTimeout: 60000,
@@ -128,57 +128,57 @@ function startReconnection() {
             '--disable-plugins-discovery',
             '--disable-print-preview',
             '--disable-component-extensions-with-background-pages',
-            '--user-data-dir=./temp-chrome-profile-' + Date.now()
+            '--user-data-dir=./temp-chrome-profile-' + userId + '-' + Date.now()
           ]
         },
         catchQR: async (qr) => {
-           console.log('QR received from wppconnect');
-  
-  // Store the raw QR code as-is
-  if (typeof qr === 'object' && qr.code) {
-    currentQr = qr.code;
-  } else if (typeof qr === 'string') {
-    currentQr = qr;
-  } else {
-    currentQr = JSON.stringify(qr);
-  }
-  
-  validSession = true;
-  browserLaunched = true;
-  console.log('QR code stored successfully');
+           console.log(`QR received from wppconnect for user ${userId}`);
+
+   // Store the raw QR code as-is
+   if (typeof qr === 'object' && qr.code) {
+     currentQrs[userId] = qr.code;
+   } else if (typeof qr === 'string') {
+     currentQrs[userId] = qr;
+   } else {
+     currentQrs[userId] = JSON.stringify(qr);
+   }
+
+   validSessions[userId] = true;
+   browserLaunchedMap[userId] = true;
+   console.log(`QR code stored successfully for user ${userId}`);
         },
         statusFind: (status) => {
-          sessionStatus = status;
-          console.log('🟡 Status:', status);
+          sessionStatuses[userId] = status;
+          console.log(`🟡 Status for user ${userId}:`, status);
 
           if (status === 'connected' || status === 'isLogged' || status === 'inChat') {
-            console.log('✅ Reconnected successfully');
-            browserLaunched = true;
-            validSession = true;
-            isReconnecting = false;
-            if (reconnectInterval) {
-              clearInterval(reconnectInterval);
-              reconnectInterval = null;
+            console.log(`✅ Reconnected successfully for user ${userId}`);
+            browserLaunchedMap[userId] = true;
+            validSessions[userId] = true;
+            isReconnectingMap[userId] = false;
+            if (reconnectIntervals[userId]) {
+              clearInterval(reconnectIntervals[userId]);
+              reconnectIntervals[userId] = null;
             }
 
             // Process any pending AI replies that failed during disconnection
-            if (pendingReplies.length > 0) {
-              console.log(`🔄 Processing ${pendingReplies.length} pending AI replies...`);
-              processPendingReplies();
+            if (pendingReplies[userId] && pendingReplies[userId].length > 0) {
+              console.log(`🔄 Processing ${pendingReplies[userId].length} pending AI replies for user ${userId}...`);
+              processPendingReplies(userId);
             }
           } else if (status === 'browserClose' || status === 'disconnected' || status === 'notLogged') {
-            browserLaunched = false;
-            validSession = false;
-            qrCode = null; // Clear invalid QR codes
+            browserLaunchedMap[userId] = false;
+            validSessions[userId] = false;
+            qrCodes[userId] = null; // Clear invalid QR codes
           }
         },
         autoClose: 3600000,
       });
 
-      console.log('✅ Reconnection client created successfully');
+      console.log(`✅ Reconnection client created successfully for user ${userId}`);
 
       // Add message listener for autoreply functionality
-      client.onMessage(async (message) => {
+      clients[userId].onMessage(async (message) => {
         try {
           console.log('📨 Received message:', message.body, 'from:', message.from);
 
@@ -282,9 +282,9 @@ function startReconnection() {
           if (autoreplyData.response) {
             // Send the AI response back
             try {
-              await client.sendText(message.from, autoreplyData.response);
+              await clients[userId].sendText(message.from, autoreplyData.response);
               console.log('✅ AI response sent to:', contact.name);
-  
+
               // Update the reply record to mark as AI responded
               await fetch(`http://localhost:3000/api/replies`, {
                 method: 'PUT',
@@ -322,19 +322,19 @@ function startReconnection() {
       });
 
     } catch (error) {
-      console.error('❌ Reconnection attempt failed:', error.message);
+      console.error(`❌ Reconnection attempt failed for user ${userId}:`, error.message);
       // Continue trying to reconnect
     }
   }, 30000); // Try to reconnect every 30 seconds
 }
 
-// Function to stop reconnection
-function stopReconnection() {
-  if (reconnectInterval) {
-    clearInterval(reconnectInterval);
-    reconnectInterval = null;
+// Function to stop reconnection for a specific user
+function stopReconnection(userId) {
+  if (reconnectIntervals[userId]) {
+    clearInterval(reconnectIntervals[userId]);
+    reconnectIntervals[userId] = null;
   }
-  isReconnecting = false;
+  isReconnectingMap[userId] = false;
 }
 
 // Message template
@@ -464,29 +464,34 @@ app.post('/contacts', (req, res) => {
   res.json({ message: 'Contacts updated' });
 });
 
-// Start session - FIXED VERSION
+// Start session for a specific user
 app.post('/api/start-session', async (req, res) => {
-  console.log('🔄 Start session request received');
-  if (client) {
-    console.log('ℹ️ Client already exists, returning status:', sessionStatus);
-    res.json({ status: sessionStatus });
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  console.log(`🔄 Start session request received for user ${userId}`);
+  if (clients[userId]) {
+    console.log(`ℹ️ Client already exists for user ${userId}, returning status:`, sessionStatuses[userId]);
+    res.json({ status: sessionStatuses[userId] });
     return;
   }
   try {
     // Delete existing session folder to ensure fresh start
-    const sessionPath = './tokens/whatsapp-session-new';
+    const sessionPath = `./tokens/whatsapp-session-${userId}`;
     if (fs.existsSync(sessionPath)) {
       try {
         fs.rmSync(sessionPath, { recursive: true, force: true });
-        console.log('🗑️ Deleted existing session folder for fresh start');
+        console.log(`🗑️ Deleted existing session folder for user ${userId} for fresh start`);
       } catch (deleteError) {
-        console.log('⚠️ Could not delete session folder, proceeding anyway:', deleteError.message);
+        console.log(`⚠️ Could not delete session folder for user ${userId}, proceeding anyway:`, deleteError.message);
       }
     }
 
-    console.log('🚀 Creating WhatsApp client...');
-    client = await wppconnect.create({
-      session: 'whatsapp-session-new',
+    console.log(`🚀 Creating WhatsApp client for user ${userId}...`);
+    clients[userId] = await wppconnect.create({
+      session: `whatsapp-session-${userId}`,
       puppeteer: {
         headless: true, // Keep headless for SaaS - browser runs on server, not user machine
         protocolTimeout: 60000,
@@ -510,47 +515,47 @@ app.post('/api/start-session', async (req, res) => {
         ]
       },
       catchQR: async (qr) => {
-        console.log('🔍 DEBUG: catchQR called with qr type:', typeof qr);
-  
-  // DON'T try to re-encode the session token
-  // Just pass it through as-is to the frontend
-  if (typeof qr === 'object' && qr.code) {
-    currentQr = qr.code;
-  } else if (typeof qr === 'string') {
-    currentQr = qr;
-  } else {
-    currentQr = JSON.stringify(qr);
-  }
-  
-  validSession = true;
-  browserLaunched = true;
-  console.log('📱 QR code stored - length:', currentQr?.length);
-  
-  // Don't try to convert to DataURL, just store the raw code
+        console.log(`🔍 DEBUG: catchQR called with qr type for user ${userId}:`, typeof qr);
+
+   // DON'T try to re-encode the session token
+   // Just pass it through as-is to the frontend
+   if (typeof qr === 'object' && qr.code) {
+     currentQrs[userId] = qr.code;
+   } else if (typeof qr === 'string') {
+     currentQrs[userId] = qr;
+   } else {
+     currentQrs[userId] = JSON.stringify(qr);
+   }
+
+   validSessions[userId] = true;
+   browserLaunchedMap[userId] = true;
+   console.log(`📱 QR code stored for user ${userId} - length:`, currentQrs[userId]?.length);
+
+   // Don't try to convert to DataURL, just store the raw code
       },
       statusFind: (status) => {
-        sessionStatus = status;
-        console.log('🟡 Status:', status);
+        sessionStatuses[userId] = status;
+        console.log(`🟡 Status for user ${userId}:`, status);
 
         if (status === 'connected' || status === 'isLogged' || status === 'inChat') {
-          console.log('✅ WhatsApp client connected successfully');
-          browserLaunched = true;
-          validSession = true;
-          stopReconnection(); // Stop any ongoing reconnection attempts
-          qrCode = null; // Clear QR once connected
+          console.log(`✅ WhatsApp client connected successfully for user ${userId}`);
+          browserLaunchedMap[userId] = true;
+          validSessions[userId] = true;
+          stopReconnection(userId); // Stop any ongoing reconnection attempts
+          qrCodes[userId] = null; // Clear QR once connected
         } else if (status === 'browserClose' || status === 'disconnected' || status === 'notLogged') {
-          console.log('⚠️ WhatsApp connection lost');
-          browserLaunched = false;
-          validSession = false;
-          qrCode = null;
+          console.log(`⚠️ WhatsApp connection lost for user ${userId}`);
+          browserLaunchedMap[userId] = false;
+          validSessions[userId] = false;
+          qrCodes[userId] = null;
         }
       },
       autoClose: 3600000, // 1 hour timeout
     });
-    console.log('✅ Session started successfully');
+    console.log(`✅ Session started successfully for user ${userId}`);
 
     // Message listener code remains the same...
-    client.onMessage(async (message) => {
+    clients[userId].onMessage(async (message) => {
       try {
         console.log('📨 Received message:', message.body, 'from:', message.from);
 
@@ -581,8 +586,8 @@ app.post('/api/start-session', async (req, res) => {
           const normalizedSenderPhone = normalizePhone(senderPhone);
           console.log('🔍 Checking contact:', c.name, 'phone:', c.phone, 'normalized:', normalizedContactPhone, 'vs sender:', normalizedSenderPhone);
           return normalizedContactPhone === normalizedSenderPhone ||
-                  normalizedContactPhone.endsWith(normalizedSenderPhone) ||
-                  normalizedSenderPhone.endsWith(normalizedContactPhone);
+                 normalizedContactPhone.endsWith(normalizedSenderPhone) ||
+                 normalizedSenderPhone.endsWith(normalizedContactPhone);
         });
 
         if (!contact) {
@@ -656,7 +661,7 @@ app.post('/api/start-session', async (req, res) => {
         if (autoreplyData.response) {
           // Send the AI response back
           try {
-            await client.sendText(message.from, autoreplyData.response);
+            await clients[userId].sendText(message.from, autoreplyData.response);
             console.log('✅ AI response sent to:', contact.name);
 
             // Update the reply record to mark as AI responded
@@ -697,23 +702,28 @@ app.post('/api/start-session', async (req, res) => {
 
     res.json({ status: 'session started' });
   } catch (error) {
-    console.error('❌ Error starting session:', error);
-    browserLaunched = false;
-    validSession = false;
-    qrCode = null;
+    console.error(`❌ Error starting session for user ${userId}:`, error);
+    browserLaunchedMap[userId] = false;
+    validSessions[userId] = false;
+    qrCodes[userId] = null;
     res.status(500).json({ error: error.message });
   }
 });
 
-// API route for frontend to fetch QR
+// API route for frontend to fetch QR for a specific user
 app.get('/api/qr', async (req, res) => {
-  console.log('🔍 DEBUG: /api/qr called - currentQr exists:', !!currentQr, 'length:', currentQr?.length || 'undefined', 'status:', sessionStatus);
+  const { userId } = req.query;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  console.log(`🔍 DEBUG: /api/qr called for user ${userId} - currentQr exists:`, !!currentQrs[userId], 'length:', currentQrs[userId]?.length || 'undefined', 'status:', sessionStatuses[userId]);
   res.json({
-    qr: currentQr,
-    status: sessionStatus,
-    validSession: validSession,
-    hasQR: !!currentQr,
-    qrType: currentQr && currentQr.startsWith('data:image/') ? 'image' : 'text'
+    qr: currentQrs[userId],
+    status: sessionStatuses[userId],
+    validSession: validSessions[userId],
+    hasQR: !!currentQrs[userId],
+    qrType: currentQrs[userId] && currentQrs[userId].startsWith('data:image/') ? 'image' : 'text'
   });
 });
 
@@ -738,42 +748,51 @@ app.get('/api/qr-ascii-image', async (req, res) => {
   }
 });
 
-// Check session status
+// Check session status for a specific user
 app.get('/api/session-status', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
   try {
-    if (client) {
+    if (clients[userId]) {
       // Check if client is still connected
-      const state = await client.getConnectionState();
+      const state = await clients[userId].getConnectionState();
       res.json({
         hasClient: true,
-        status: sessionStatus,
+        status: sessionStatuses[userId],
         connectionState: state
       });
     } else {
       res.json({
         hasClient: false,
-        status: sessionStatus,
+        status: sessionStatuses[userId],
         connectionState: null
       });
     }
   } catch (error) {
-    console.error('Error checking session status:', error);
+    console.error(`Error checking session status for user ${userId}:`, error);
     res.json({
-      hasClient: !!client,
-      status: sessionStatus,
+      hasClient: !!clients[userId],
+      status: sessionStatuses[userId],
       connectionState: null,
       error: error.message
     });
   }
 });
 
-// Send messages
+// Send messages for a specific user
 app.post('/send-messages', async (req, res) => {
-  if (!client) {
-    res.status(400).json({ error: 'Session not started' });
+  const { userId, selectedContacts, message: customMessage, campaignId, campaignName } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  if (!clients[userId]) {
+    res.status(400).json({ error: 'Session not started for this user' });
     return;
   }
-  const { selectedContacts, message: customMessage, campaignId, campaignName } = req.body;
   if (!selectedContacts || !Array.isArray(selectedContacts)) {
     res.status(400).json({ error: 'selectedContacts required as array' });
     return;
@@ -781,7 +800,7 @@ app.post('/send-messages', async (req, res) => {
   // Simple idempotency: if campaignId or campaignName was provided and we've
   // already processed it, return early to avoid duplicate sends.
   try {
-    const SENT_FILE = './sent_campaigns.json';
+    const SENT_FILE = `./sent_campaigns_${userId}.json`;
     let sentCampaigns = [];
     if (fs.existsSync(SENT_FILE)) {
       sentCampaigns = JSON.parse(fs.readFileSync(SENT_FILE, 'utf8')) || [];
@@ -792,11 +811,11 @@ app.post('/send-messages', async (req, res) => {
       ? sentCampaigns.find((c) => c.campaignName === campaignName)
       : null;
     if (already) {
-      console.log('⚠️ Duplicate send request detected for', campaignId || campaignName);
+      console.log(`⚠️ Duplicate send request detected for user ${userId}:`, campaignId || campaignName);
       return res.json({ message: 'Campaign already processed', success: 0, failed: 0, duplicate: true });
     }
   } catch (e) {
-    console.warn('Could not read sent_campaigns.json for idempotency:', e.message);
+    console.warn(`Could not read sent_campaigns_${userId}.json for idempotency:`, e.message);
   }
   const sentCount = { success: 0, failed: 0 };
 
@@ -816,20 +835,20 @@ app.post('/send-messages', async (req, res) => {
     }
 
     try {
-      console.log(`📤 Sending message to ${contact.name}...`);
-      await client.sendText(chatId, message);
+      console.log(`📤 Sending message to ${contact.name} for user ${userId}...`);
+      await clients[userId].sendText(chatId, message);
 
       // Send video if exists
       if (fs.existsSync('./video.mp4')) {
-        await client.sendFile(chatId, './video.mp4', 'kss-promo.mp4', '🎬 Here\'s a short video recap!');
-        console.log(`✅ Video sent to ${contact.name}`);
+        await clients[userId].sendFile(chatId, './video.mp4', 'kss-promo.mp4', '🎬 Here\'s a short video recap!');
+        console.log(`✅ Video sent to ${contact.name} for user ${userId}`);
       }
 
       sentCount.success++;
-      console.log(`✅ Message sent to ${contact.name}`);
+      console.log(`✅ Message sent to ${contact.name} for user ${userId}`);
       await new Promise((resolve) => setTimeout(resolve, 4000)); // delay
     } catch (err) {
-      console.error(`❌ Failed to send to ${contact.name}:`, err.message);
+      console.error(`❌ Failed to send to ${contact.name} for user ${userId}:`, err.message);
       sentCount.failed++;
     }
   }
@@ -837,7 +856,7 @@ app.post('/send-messages', async (req, res) => {
   res.json({ message: 'Messages sent', ...sentCount });
   // Record that this campaign has been processed to avoid duplicate sends on retry
   try {
-    const SENT_FILE = './sent_campaigns.json';
+    const SENT_FILE = `./sent_campaigns_${userId}.json`;
     let sentCampaigns = [];
     if (fs.existsSync(SENT_FILE)) {
       sentCampaigns = JSON.parse(fs.readFileSync(SENT_FILE, 'utf8')) || [];
@@ -845,7 +864,7 @@ app.post('/send-messages', async (req, res) => {
     sentCampaigns.push({ campaignId: campaignId || null, campaignName: campaignName || null, timestamp: Date.now() });
     fs.writeFileSync(SENT_FILE, JSON.stringify(sentCampaigns, null, 2));
   } catch (e) {
-    console.warn('Could not update sent_campaigns.json:', e.message);
+    console.warn(`Could not update sent_campaigns_${userId}.json:`, e.message);
   }
 });
 
@@ -1048,47 +1067,57 @@ Be specific and actionable in your suggestions.`;
   }
 });
 
-// Disconnect WhatsApp session
+// Disconnect WhatsApp session for a specific user
 app.post('/api/disconnect-session', async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
   try {
-    stopReconnection(); // Stop any reconnection attempts
-    if (client) {
-      await client.close();
-      client = null;
-      qrCode = null;
-      sessionStatus = 'disconnected';
-      console.log('✅ WhatsApp session disconnected');
+    stopReconnection(userId); // Stop any reconnection attempts
+    if (clients[userId]) {
+      await clients[userId].close();
+      clients[userId] = null;
+      qrCodes[userId] = null;
+      sessionStatuses[userId] = 'disconnected';
+      console.log(`✅ WhatsApp session disconnected for user ${userId}`);
       res.json({ success: true, message: 'Session disconnected' });
     } else {
       res.json({ success: true, message: 'No active session to disconnect' });
     }
   } catch (error) {
-    console.error('Error disconnecting session:', error);
+    console.error(`Error disconnecting session for user ${userId}:`, error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Delete WhatsApp session (for corrupted sessions)
+// Delete WhatsApp session for a specific user (for corrupted sessions)
 app.post('/api/delete-session', async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
   try {
-    stopReconnection(); // Stop any reconnection attempts
-    if (client) {
-      await client.close();
-      client = null;
+    stopReconnection(userId); // Stop any reconnection attempts
+    if (clients[userId]) {
+      await clients[userId].close();
+      clients[userId] = null;
     }
-    qrCode = null;
-    sessionStatus = 'disconnected';
+    qrCodes[userId] = null;
+    sessionStatuses[userId] = 'disconnected';
 
     // Delete session folder
-    const sessionPath = './tokens/whatsapp-session-new';
+    const sessionPath = `./tokens/whatsapp-session-${userId}`;
     if (fs.existsSync(sessionPath)) {
       fs.rmSync(sessionPath, { recursive: true, force: true });
-      console.log('✅ WhatsApp session folder deleted');
+      console.log(`✅ WhatsApp session folder deleted for user ${userId}`);
     }
 
     res.json({ success: true, message: 'Session deleted and reset' });
   } catch (error) {
-    console.error('Error deleting session:', error);
+    console.error(`Error deleting session for user ${userId}:`, error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -1166,18 +1195,21 @@ If you don't have enough context to provide a specific answer, acknowledge their
 
 app.post('/send-reminder', async (req, res) => {
   try {
-    const { phone, message } = req.body;
+    const { userId, phone, message } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
     if (!phone || !message) {
       return res.status(400).json({ error: 'Phone and message required' });
     }
 
-    if (!client) {
-      return res.status(400).json({ error: 'WhatsApp client not connected' });
+    if (!clients[userId]) {
+      return res.status(400).json({ error: 'WhatsApp client not connected for this user' });
     }
 
     const chatId = `${phone}@c.us`;
-    await client.sendText(chatId, message);
-    console.log(`Reminder sent to ${phone}`);
+    await clients[userId].sendText(chatId, message);
+    console.log(`Reminder sent to ${phone} for user ${userId}`);
     res.json({ success: true });
   } catch (error) {
     console.error('Reminder send error:', error);
@@ -1185,14 +1217,14 @@ app.post('/send-reminder', async (req, res) => {
   }
 });
 
-// Function to process pending AI replies when connection is restored
-async function processPendingReplies() {
-  if (pendingReplies.length === 0 || !client) return;
+// Function to process pending AI replies when connection is restored for a specific user
+async function processPendingReplies(userId) {
+  if (!pendingReplies[userId] || pendingReplies[userId].length === 0 || !clients[userId]) return;
 
-  console.log(`🔄 Processing ${pendingReplies.length} pending AI replies...`);
+  console.log(`🔄 Processing ${pendingReplies[userId].length} pending AI replies for user ${userId}...`);
 
-  for (let i = pendingReplies.length - 1; i >= 0; i--) {
-    const pendingReply = pendingReplies[i];
+  for (let i = pendingReplies[userId].length - 1; i >= 0; i--) {
+    const pendingReply = pendingReplies[userId][i];
 
     try {
       // Check if this reply still needs AI response (not manually handled)
@@ -1201,8 +1233,8 @@ async function processPendingReplies() {
 
       if (currentReply && !currentReply.isAIResponded && !currentReply.isHumanResponded) {
         // Still needs AI response, try to send now
-        await client.sendText(pendingReply.phone, pendingReply.message);
-        console.log(`✅ Sent pending AI reply to ${pendingReply.phone}`);
+        await clients[userId].sendText(pendingReply.phone, pendingReply.message);
+        console.log(`✅ Sent pending AI reply to ${pendingReply.phone} for user ${userId}`);
 
         // Update the reply record
         currentReply.isAIResponded = true;
@@ -1211,18 +1243,18 @@ async function processPendingReplies() {
         fs.writeFileSync('./data/replies.json', JSON.stringify(replies, null, 2));
 
         // Remove from pending list
-        pendingReplies.splice(i, 1);
+        pendingReplies[userId].splice(i, 1);
       } else {
         // Reply was already handled manually, remove from pending
-        pendingReplies.splice(i, 1);
+        pendingReplies[userId].splice(i, 1);
       }
     } catch (error) {
-      console.error(`❌ Failed to send pending reply to ${pendingReply.phone}:`, error.message);
+      console.error(`❌ Failed to send pending reply to ${pendingReply.phone} for user ${userId}:`, error.message);
       // Keep in pending list for next retry
     }
   }
 
-  console.log(`📊 Pending replies processed. ${pendingReplies.length} remaining.`);
+  console.log(`📊 Pending replies processed for user ${userId}. ${pendingReplies[userId].length} remaining.`);
 
   // Save updated pending replies
   try {
@@ -1232,17 +1264,22 @@ async function processPendingReplies() {
   }
 }
 
-// Reset sent campaigns history
+// Reset sent campaigns history for a specific user
 app.post('/reset-sent-campaigns', (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
   try {
-    const SENT_FILE = './sent_campaigns.json';
+    const SENT_FILE = `./sent_campaigns_${userId}.json`;
     if (fs.existsSync(SENT_FILE)) {
       fs.unlinkSync(SENT_FILE);
-      console.log('Sent campaigns history reset');
+      console.log(`Sent campaigns history reset for user ${userId}`);
     }
     res.json({ success: true, message: 'Sent campaigns history has been reset' });
   } catch (error) {
-    console.error('Error resetting sent campaigns:', error);
+    console.error(`Error resetting sent campaigns for user ${userId}:`, error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

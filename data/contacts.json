@@ -1,25 +1,12 @@
 [
   {
-    "id": "1760092059123",
-    "name": "steve",
-    "title": "social media manager",
-    "phone": "254798149980",
-    "tags": []
-  },
-  {
-    "id": "1760094028356",
-    "name": "james",
+    "id": "1760427543729",
+    "name": "John Doe",
     "title": "CEO",
-    "phone": "254768038725",
+    "phone": "+1234567890",
     "tags": [
-      "WEBSOLUTIONS"
-    ]
-  },
-  {
-    "id": "1760108866013",
-    "name": "Judy",
-    "title": "CEO",
-    "phone": "254790328434",
-    "tags": []
+      "VIP"
+    ],
+    "userId": "1760427485130"
   }
 ]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUser } from "@/lib/user-context";
 import { motion } from "framer-motion";
 import {
   Upload,
@@ -57,7 +58,13 @@ const mockContacts: Contact[] = [
 ];
 
 export default function ContactsPage() {
+  const { user } = useUser();
   const [contacts, setContacts] = useState<Contact[]>([]);
+
+  // Redirect if not authenticated
+  if (!user) {
+    return null;
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState<string | null>(null);

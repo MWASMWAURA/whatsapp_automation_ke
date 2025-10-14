@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUser } from "@/lib/user-context";
 import { motion } from "framer-motion";
 import { MessageSquare, Bot, Send, User } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +30,7 @@ interface Contact {
 }
 
 export default function AutoreplyPage() {
+  const { user } = useUser();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([]);
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -36,6 +38,11 @@ export default function AutoreplyPage() {
   const [selectedReply, setSelectedReply] = useState<Reply | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState("");
+
+  // Redirect if not authenticated
+  if (!user) {
+    return null;
+  }
 
   useEffect(() => {
     const fetchCampaigns = async () => {

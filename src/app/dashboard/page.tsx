@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUser } from "@/lib/user-context";
 import { motion } from "framer-motion";
 import {
   MessageSquare,
@@ -37,6 +38,7 @@ interface Campaign {
 }
 
 export default function Dashboard() {
+  const { user } = useUser();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<string>("");
   const [replies, setReplies] = useState<any[]>([]);
@@ -155,9 +157,12 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-slate-900">
+          Welcome back, {user?.name || "User"}!
+        </h1>
         <p className="text-slate-600 mt-2">
-          Welcome back! Here's what's happening with your campaigns.
+          Here's what's happening with your campaigns. Your account is active
+          and ready to send messages.
         </p>
       </div>
 

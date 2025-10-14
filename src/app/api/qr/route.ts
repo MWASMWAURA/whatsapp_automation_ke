@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId') || authPayload.userId;
 
-    const response = await fetch(`${BACKEND_URL}/api/session-status?userId=${userId}`);
+    const response = await fetch(`${BACKEND_URL}/api/qr?userId=${userId}`);
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching session status:', error);
+    console.error('Error fetching QR:', error);
     return NextResponse.json(
-      { hasClient: false, status: 'disconnected', connectionState: null, error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch QR code' },
       { status: 500 }
     );
   }

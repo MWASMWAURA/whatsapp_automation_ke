@@ -7,7 +7,8 @@
     "sentiment": "neutral",
     "timestamp": "2025-10-10T10:01:56.156Z",
     "isAIResponded": false,
-    "aiResponse": null
+    "aiResponse": null,
+    "userId": "1760425954942"
   },
   {
     "id": "1760107285942",
@@ -17,7 +18,8 @@
     "sentiment": "neutral",
     "timestamp": "2025-10-10T14:41:25.943Z",
     "isAIResponded": false,
-    "aiResponse": null
+    "aiResponse": null,
+    "userId": "1760425954942"
   },
   {
     "id": "1760207232860",
@@ -27,7 +29,8 @@
     "sentiment": "neutral",
     "timestamp": "2025-10-11T18:27:12.860Z",
     "isAIResponded": false,
-    "aiResponse": null
+    "aiResponse": null,
+    "userId": "1760425954942"
   },
   {
     "id": "1760354603721",
@@ -37,6 +40,7 @@
     "sentiment": "neutral",
     "timestamp": "2025-10-13T11:23:23.721Z",
     "isAIResponded": false,
-    "aiResponse": null
+    "aiResponse": null,
+    "userId": "1760425954942"
   }
 ]

@@ -4,20 +4,23 @@
     "question": "where are you located",
     "answer": "ruiru",
     "category": "General",
-    "createdAt": "2025-10-10T09:50:13.803Z"
+    "createdAt": "2025-10-10T09:50:13.803Z",
+    "userId": "1760425954942"
   },
   {
     "id": "1760351654101",
     "question": "hi",
     "answer": "Hello, how are you?",
     "category": "Support",
-    "createdAt": "2025-10-13T10:34:14.101Z"
+    "createdAt": "2025-10-13T10:34:14.101Z",
+    "userId": "1760425954942"
   },
   {
     "id": "1760351654106",
     "question": "hi",
     "answer": "Hello, how are you?",
     "category": "Support",
-    "createdAt": "2025-10-13T10:34:14.106Z"
+    "createdAt": "2025-10-13T10:34:14.106Z",
+    "userId": "1760425954942"
   }
 ]

@@ -32,7 +32,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Load user from localStorage on mount
     const savedUser = localStorage.getItem("user");
-    if (savedUser) {
+    const authToken = localStorage.getItem("authToken");
+
+    if (savedUser && authToken) {
       try {
         const parsedUser = JSON.parse(savedUser);
         // Check if session is still active (within 24 hours)
@@ -42,10 +44,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
           setUser({ ...parsedUser, sessionActive: true });
         } else {
           localStorage.removeItem("user");
+          localStorage.removeItem("authToken");
         }
       } catch (error) {
         console.error("Error loading user:", error);
         localStorage.removeItem("user");
+        localStorage.removeItem("authToken");
       }
     }
   }, []);
@@ -66,9 +70,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      // Call logout API
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Logout API error:", error);
+    }
+
+    // Clear local state and storage
     setUser(null);
     localStorage.removeItem("user");
+    localStorage.removeItem("authToken");
   };
 
   const updateProfile = (updates: Partial<User>) => {

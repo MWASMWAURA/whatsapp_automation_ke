@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeSentiment } from '@/lib/ai';
+import { withAuth } from '@/lib/middleware';
 import fs from 'fs';
 import path from 'path';
 
@@ -62,118 +63,124 @@ function writeReplies(replies: any[]): void {
 }
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const campaignId = searchParams.get('campaignId');
-  const campaignIds = searchParams.get('campaignIds');
+  return withAuth(request, async (request, user) => {
+    const { searchParams } = new URL(request.url);
+    const campaignId = searchParams.get('campaignId');
+    const campaignIds = searchParams.get('campaignIds');
 
-  const replies = readReplies();
-  if (campaignIds) {
-    const ids = campaignIds.split(',');
-    const campaignReplies = replies.filter((reply: any) => ids.includes(reply.campaignId));
-    return NextResponse.json(campaignReplies);
-  } else if (campaignId) {
-    const campaignReplies = replies.filter((reply: any) => reply.campaignId === campaignId);
-    return NextResponse.json(campaignReplies);
-  }
+    const replies = readReplies();
+    if (campaignIds) {
+      const ids = campaignIds.split(',');
+      const campaignReplies = replies.filter((reply: any) => ids.includes(reply.campaignId));
+      return NextResponse.json(campaignReplies);
+    } else if (campaignId) {
+      const campaignReplies = replies.filter((reply: any) => reply.campaignId === campaignId);
+      return NextResponse.json(campaignReplies);
+    }
 
-  return NextResponse.json(replies);
+    return NextResponse.json(replies);
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
+  return withAuth(request, async (request, user) => {
+    try {
+      const body = await request.json();
 
-    // Check if this is a pending reply storage request
-    if (body.replyId && body.phone && body.message) {
-      // Handle pending reply storage
-      const { replyId, phone, message, timestamp, attemptCount } = body;
+      // Check if this is a pending reply storage request
+      if (body.replyId && body.phone && body.message) {
+        // Handle pending reply storage
+        const { replyId, phone, message, timestamp, attemptCount } = body;
 
-      const pendingReplies = readPendingReplies();
+        const pendingReplies = readPendingReplies();
 
-      // Check if this reply is already pending
-      const existingIndex = pendingReplies.findIndex((p: any) => p.replyId === replyId);
+        // Check if this reply is already pending
+        const existingIndex = pendingReplies.findIndex((p: any) => p.replyId === replyId);
 
-      if (existingIndex >= 0) {
-        // Update existing pending reply
-        pendingReplies[existingIndex] = {
-          ...pendingReplies[existingIndex],
-          message,
-          timestamp: timestamp || new Date().toISOString(),
-          attemptCount: (pendingReplies[existingIndex].attemptCount || 0) + 1
-        };
+        if (existingIndex >= 0) {
+          // Update existing pending reply
+          pendingReplies[existingIndex] = {
+            ...pendingReplies[existingIndex],
+            message,
+            timestamp: timestamp || new Date().toISOString(),
+            attemptCount: (pendingReplies[existingIndex].attemptCount || 0) + 1
+          };
+        } else {
+          // Add new pending reply
+          pendingReplies.push({
+            replyId,
+            phone,
+            message,
+            timestamp: timestamp || new Date().toISOString(),
+            attemptCount: attemptCount || 1
+          });
+        }
+
+        writePendingReplies(pendingReplies);
+
+        return NextResponse.json({
+          success: true,
+          message: 'Pending reply stored for retry'
+        }, { status: 201 });
       } else {
-        // Add new pending reply
-        pendingReplies.push({
-          replyId,
-          phone,
+        // Handle normal reply creation
+        const { campaignId, contactId, message } = body;
+
+        if (!campaignId || !contactId || !message) {
+          return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        }
+
+        // Analyze sentiment of the reply
+        const sentimentResult = await analyzeSentiment(message);
+
+        const replies = readReplies();
+        const newReply = {
+          id: Date.now().toString(),
+          campaignId,
+          contactId,
           message,
-          timestamp: timestamp || new Date().toISOString(),
-          attemptCount: attemptCount || 1
-        });
+          sentiment: sentimentResult.success ? sentimentResult.data?.sentiment : 'neutral',
+          timestamp: new Date().toISOString(),
+          isAIResponded: false,
+          aiResponse: null,
+        };
+
+        replies.push(newReply);
+        writeReplies(replies);
+        return NextResponse.json(newReply, { status: 201 });
       }
-
-      writePendingReplies(pendingReplies);
-
-      return NextResponse.json({
-        success: true,
-        message: 'Pending reply stored for retry'
-      }, { status: 201 });
-    } else {
-      // Handle normal reply creation
-      const { campaignId, contactId, message } = body;
-
-      if (!campaignId || !contactId || !message) {
-        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-      }
-
-      // Analyze sentiment of the reply
-      const sentimentResult = await analyzeSentiment(message);
-
-      const replies = readReplies();
-      const newReply = {
-        id: Date.now().toString(),
-        campaignId,
-        contactId,
-        message,
-        sentiment: sentimentResult.success ? sentimentResult.data?.sentiment : 'neutral',
-        timestamp: new Date().toISOString(),
-        isAIResponded: false,
-        aiResponse: null,
-      };
-
-      replies.push(newReply);
-      writeReplies(replies);
-      return NextResponse.json(newReply, { status: 201 });
+    } catch (error) {
+      console.error('Error processing reply:', error);
+      return NextResponse.json({ error: 'Failed to process reply' }, { status: 500 });
     }
-  } catch (error) {
-    console.error('Error processing reply:', error);
-    return NextResponse.json({ error: 'Failed to process reply' }, { status: 500 });
-  }
+  });
 }
 
 export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { id, isAIResponded, aiResponse, isHumanResponded, humanResponse, aiResponseTime } = body;
+  return withAuth(request, async (request, user) => {
+    try {
+      const body = await request.json();
+      const { id, isAIResponded, aiResponse, isHumanResponded, humanResponse, aiResponseTime } = body;
 
-    const replies = readReplies();
-    const replyIndex = replies.findIndex((r: any) => r.id === id);
-    if (replyIndex === -1) {
-      return NextResponse.json({ error: 'Reply not found' }, { status: 404 });
+      const replies = readReplies();
+      const replyIndex = replies.findIndex((r: any) => r.id === id);
+      if (replyIndex === -1) {
+        return NextResponse.json({ error: 'Reply not found' }, { status: 404 });
+      }
+
+      replies[replyIndex] = {
+        ...replies[replyIndex],
+        isAIResponded: isAIResponded ?? replies[replyIndex].isAIResponded,
+        aiResponse: aiResponse ?? replies[replyIndex].aiResponse,
+        isHumanResponded: isHumanResponded ?? replies[replyIndex].isHumanResponded,
+        humanResponse: humanResponse ?? replies[replyIndex].humanResponse,
+        aiResponseTime: aiResponseTime ?? replies[replyIndex].aiResponseTime,
+      };
+
+      writeReplies(replies);
+      return NextResponse.json(replies[replyIndex]);
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
-
-    replies[replyIndex] = {
-      ...replies[replyIndex],
-      isAIResponded: isAIResponded ?? replies[replyIndex].isAIResponded,
-      aiResponse: aiResponse ?? replies[replyIndex].aiResponse,
-      isHumanResponded: isHumanResponded ?? replies[replyIndex].isHumanResponded,
-      humanResponse: humanResponse ?? replies[replyIndex].humanResponse,
-      aiResponseTime: aiResponseTime ?? replies[replyIndex].aiResponseTime,
-    };
-
-    writeReplies(replies);
-    return NextResponse.json(replies[replyIndex]);
-  } catch (error) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
-  }
+  });
 }
