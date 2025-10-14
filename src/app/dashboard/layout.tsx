@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { useUser } from "@/lib/user-context";
 import ProtectedRoute from "@/components/ProtectedRoute";

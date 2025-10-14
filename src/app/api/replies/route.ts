@@ -1,84 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeSentiment } from '@/lib/ai';
 import { withAuth } from '@/lib/middleware';
-import fs from 'fs';
-import path from 'path';
-
-// Helper to read pending replies
-function readPendingReplies(): any[] {
-  try {
-    const pendingFile = path.join(process.cwd(), 'data', 'pending-replies.json');
-    if (fs.existsSync(pendingFile)) {
-      const data = fs.readFileSync(pendingFile, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading pending replies:', error);
-  }
-  return [];
-}
-
-// Helper to write pending replies
-function writePendingReplies(replies: any[]): void {
-  try {
-    const pendingFile = path.join(process.cwd(), 'data', 'pending-replies.json');
-    const dataDir = path.dirname(pendingFile);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    fs.writeFileSync(pendingFile, JSON.stringify(replies, null, 2));
-  } catch (error) {
-    console.error('Error writing pending replies:', error);
-  }
-}
-
-// File-based storage for replies
-const REPLIES_FILE = path.join(process.cwd(), 'data', 'replies.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(path.join(process.cwd(), 'data'))) {
-  fs.mkdirSync(path.join(process.cwd(), 'data'), { recursive: true });
-}
-
-// Helper function to read replies from file
-function readReplies(): any[] {
-  try {
-    if (fs.existsSync(REPLIES_FILE)) {
-      const data = fs.readFileSync(REPLIES_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading replies file:', error);
-  }
-  return [];
-}
-
-// Helper function to write replies to file
-function writeReplies(replies: any[]): void {
-  try {
-    fs.writeFileSync(REPLIES_FILE, JSON.stringify(replies, null, 2));
-  } catch (error) {
-    console.error('Error writing replies file:', error);
-  }
-}
+import { db, Reply } from '@/lib/database';
 
 export async function GET(request: NextRequest) {
   return withAuth(request, async (request, user) => {
-    const { searchParams } = new URL(request.url);
-    const campaignId = searchParams.get('campaignId');
-    const campaignIds = searchParams.get('campaignIds');
+    try {
+      const { searchParams } = new URL(request.url);
+      const campaignId = searchParams.get('campaignId');
+      const campaignIds = searchParams.get('campaignIds');
 
-    const replies = readReplies();
-    if (campaignIds) {
-      const ids = campaignIds.split(',');
-      const campaignReplies = replies.filter((reply: any) => ids.includes(reply.campaignId));
-      return NextResponse.json(campaignReplies);
-    } else if (campaignId) {
-      const campaignReplies = replies.filter((reply: any) => reply.campaignId === campaignId);
-      return NextResponse.json(campaignReplies);
+      if (campaignIds) {
+        const ids = campaignIds.split(',');
+        const campaignReplies = await db.getRepliesByCampaignIds(ids);
+        return NextResponse.json(campaignReplies);
+      } else if (campaignId) {
+        const campaignReplies = await db.getReplies(campaignId);
+        return NextResponse.json(campaignReplies);
+      }
+
+      // Return all replies (admin functionality)
+      const replies = await db.getReplies();
+      return NextResponse.json(replies);
+    } catch (error) {
+      console.error('Error fetching replies:', error);
+      return NextResponse.json({ error: 'Failed to fetch replies' }, { status: 500 });
     }
-
-    return NextResponse.json(replies);
   });
 }
 
@@ -92,31 +39,13 @@ export async function POST(request: NextRequest) {
         // Handle pending reply storage
         const { replyId, phone, message, timestamp, attemptCount } = body;
 
-        const pendingReplies = readPendingReplies();
-
-        // Check if this reply is already pending
-        const existingIndex = pendingReplies.findIndex((p: any) => p.replyId === replyId);
-
-        if (existingIndex >= 0) {
-          // Update existing pending reply
-          pendingReplies[existingIndex] = {
-            ...pendingReplies[existingIndex],
-            message,
-            timestamp: timestamp || new Date().toISOString(),
-            attemptCount: (pendingReplies[existingIndex].attemptCount || 0) + 1
-          };
-        } else {
-          // Add new pending reply
-          pendingReplies.push({
-            replyId,
-            phone,
-            message,
-            timestamp: timestamp || new Date().toISOString(),
-            attemptCount: attemptCount || 1
-          });
-        }
-
-        writePendingReplies(pendingReplies);
+        await db.createPendingReply({
+          replyId: parseInt(replyId),
+          phone,
+          message,
+          timestamp: timestamp || new Date().toISOString(),
+          attemptCount: attemptCount || 1
+        });
 
         return NextResponse.json({
           success: true,
@@ -133,20 +62,13 @@ export async function POST(request: NextRequest) {
         // Analyze sentiment of the reply
         const sentimentResult = await analyzeSentiment(message);
 
-        const replies = readReplies();
-        const newReply = {
-          id: Date.now().toString(),
+        const newReply = await db.createReply({
           campaignId,
           contactId,
           message,
-          sentiment: sentimentResult.success ? sentimentResult.data?.sentiment : 'neutral',
-          timestamp: new Date().toISOString(),
-          isAIResponded: false,
-          aiResponse: null,
-        };
+          sentiment: sentimentResult.success ? sentimentResult.data?.sentiment : 'neutral'
+        });
 
-        replies.push(newReply);
-        writeReplies(replies);
         return NextResponse.json(newReply, { status: 201 });
       }
     } catch (error) {
@@ -162,25 +84,21 @@ export async function PUT(request: NextRequest) {
       const body = await request.json();
       const { id, isAIResponded, aiResponse, isHumanResponded, humanResponse, aiResponseTime } = body;
 
-      const replies = readReplies();
-      const replyIndex = replies.findIndex((r: any) => r.id === id);
-      if (replyIndex === -1) {
+      const updates: Partial<Reply> = {};
+      if (isAIResponded !== undefined) updates.isAIResponded = isAIResponded;
+      if (aiResponse !== undefined) updates.aiResponse = aiResponse;
+      if (isHumanResponded !== undefined) updates.isHumanResponded = isHumanResponded;
+      if (humanResponse !== undefined) updates.humanResponse = humanResponse;
+      if (aiResponseTime !== undefined) updates.aiResponseTime = aiResponseTime;
+
+      const updatedReply = await db.updateReply(id, updates);
+      return NextResponse.json(updatedReply);
+    } catch (error) {
+      console.error('Error updating reply:', error);
+      if (error.message === 'Reply not found') {
         return NextResponse.json({ error: 'Reply not found' }, { status: 404 });
       }
-
-      replies[replyIndex] = {
-        ...replies[replyIndex],
-        isAIResponded: isAIResponded ?? replies[replyIndex].isAIResponded,
-        aiResponse: aiResponse ?? replies[replyIndex].aiResponse,
-        isHumanResponded: isHumanResponded ?? replies[replyIndex].isHumanResponded,
-        humanResponse: humanResponse ?? replies[replyIndex].humanResponse,
-        aiResponseTime: aiResponseTime ?? replies[replyIndex].aiResponseTime,
-      };
-
-      writeReplies(replies);
-      return NextResponse.json(replies[replyIndex]);
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+      return NextResponse.json({ error: 'Failed to update reply' }, { status: 500 });
     }
   });
 }

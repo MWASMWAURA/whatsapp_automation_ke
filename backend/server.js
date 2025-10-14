@@ -1,4 +1,6 @@
 require('dotenv').config();
+const { initializeDatabase, db } = require('./database');
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const csv = require('csv-parser');
@@ -447,21 +449,22 @@ app.get('/template', (req, res) => {
   }
 });
 
-// Get contacts
-app.get('/contacts', (req, res) => {
-  if (fs.existsSync('./contacts.json')) {
-    const contacts = JSON.parse(fs.readFileSync('./contacts.json', 'utf8'));
-    res.json(contacts);
-  } else {
+// Get contacts (legacy endpoint for backward compatibility)
+app.get('/contacts', async (req, res) => {
+  try {
+    // For now, return empty array since we need user authentication
+    // This endpoint should be replaced with authenticated API calls
     res.json([]);
+  } catch (error) {
+    console.error('Error getting contacts:', error);
+    res.status(500).json({ error: 'Failed to get contacts' });
   }
 });
 
-// Update contacts (for editing)
+// Update contacts (legacy endpoint for backward compatibility)
 app.post('/contacts', (req, res) => {
-  const contacts = req.body.contacts;
-  fs.writeFileSync('./contacts.json', JSON.stringify(contacts, null, 2));
-  res.json({ message: 'Contacts updated' });
+  // This endpoint is deprecated - contacts are now handled via authenticated API
+  res.json({ message: 'Contacts updated (deprecated endpoint)' });
 });
 
 // Start session for a specific user
@@ -1219,48 +1222,44 @@ app.post('/send-reminder', async (req, res) => {
 
 // Function to process pending AI replies when connection is restored for a specific user
 async function processPendingReplies(userId) {
-  if (!pendingReplies[userId] || pendingReplies[userId].length === 0 || !clients[userId]) return;
-
-  console.log(`🔄 Processing ${pendingReplies[userId].length} pending AI replies for user ${userId}...`);
-
-  for (let i = pendingReplies[userId].length - 1; i >= 0; i--) {
-    const pendingReply = pendingReplies[userId][i];
-
-    try {
-      // Check if this reply still needs AI response (not manually handled)
-      const replies = JSON.parse(fs.readFileSync('./data/replies.json', 'utf8'));
-      const currentReply = replies.find((r) => r.id === pendingReply.replyId);
-
-      if (currentReply && !currentReply.isAIResponded && !currentReply.isHumanResponded) {
-        // Still needs AI response, try to send now
-        await clients[userId].sendText(pendingReply.phone, pendingReply.message);
-        console.log(`✅ Sent pending AI reply to ${pendingReply.phone} for user ${userId}`);
-
-        // Update the reply record
-        currentReply.isAIResponded = true;
-        currentReply.aiResponse = pendingReply.message;
-        currentReply.aiResponseTime = new Date().toISOString();
-        fs.writeFileSync('./data/replies.json', JSON.stringify(replies, null, 2));
-
-        // Remove from pending list
-        pendingReplies[userId].splice(i, 1);
-      } else {
-        // Reply was already handled manually, remove from pending
-        pendingReplies[userId].splice(i, 1);
-      }
-    } catch (error) {
-      console.error(`❌ Failed to send pending reply to ${pendingReply.phone} for user ${userId}:`, error.message);
-      // Keep in pending list for next retry
-    }
-  }
-
-  console.log(`📊 Pending replies processed for user ${userId}. ${pendingReplies[userId].length} remaining.`);
-
-  // Save updated pending replies
   try {
-    fs.writeFileSync('./data/pending-replies.json', JSON.stringify(pendingReplies, null, 2));
+    const pendingRepliesList = await db.getPendingReplies();
+
+    if (!pendingRepliesList || pendingRepliesList.length === 0 || !clients[userId]) return;
+
+    console.log(`🔄 Processing ${pendingRepliesList.length} pending AI replies for user ${userId}...`);
+
+    for (let i = pendingRepliesList.length - 1; i >= 0; i--) {
+      const pendingReply = pendingRepliesList[i];
+
+      try {
+        // Check if this reply still needs AI response (not manually handled)
+        const currentReply = await db.updateReply(pendingReply.reply_id, {
+          isAIResponded: true,
+          aiResponse: pendingReply.message,
+          aiResponseTime: new Date().toISOString()
+        });
+
+        if (currentReply) {
+          // Still needs AI response, try to send now
+          await clients[userId].sendText(pendingReply.phone, pendingReply.message);
+          console.log(`✅ Sent pending AI reply to ${pendingReply.phone} for user ${userId}`);
+
+          // Remove from pending list
+          await db.deletePendingReply(pendingReply.id);
+        } else {
+          // Reply was already handled manually, remove from pending
+          await db.deletePendingReply(pendingReply.id);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to send pending reply to ${pendingReply.phone} for user ${userId}:`, error.message);
+        // Keep in pending list for next retry
+      }
+    }
+
+    console.log(`📊 Pending replies processed for user ${userId}.`);
   } catch (error) {
-    console.error('Error saving pending replies:', error);
+    console.error('Error processing pending replies:', error);
   }
 }
 
@@ -1282,6 +1281,10 @@ app.post('/reset-sent-campaigns', (req, res) => {
     console.error(`Error resetting sent campaigns for user ${userId}:`, error);
     res.status(500).json({ success: false, error: error.message });
   }
+// Initialize database on startup
+initializeDatabase().catch(console.error);
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

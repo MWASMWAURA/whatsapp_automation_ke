@@ -56,8 +56,12 @@ export default function SettingsPage() {
     // Wait 10 seconds before attempting reconnection
     setTimeout(async () => {
       try {
+        const authToken = localStorage.getItem("authToken");
         const response = await fetch("/api/start-session", {
           method: "POST",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         });
 
         if (response.ok) {
@@ -105,7 +109,12 @@ export default function SettingsPage() {
   useEffect(() => {
     const checkExistingSession = async () => {
       try {
-        const response = await fetch("/api/session-status");
+        const authToken = localStorage.getItem("authToken");
+        const response = await fetch("/api/session-status", {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
         const data = await response.json();
 
         if (
@@ -163,7 +172,12 @@ export default function SettingsPage() {
 
       interval = setInterval(async () => {
         try {
-          const response = await fetch("/api/qr");
+          const authToken = localStorage.getItem("authToken");
+          const response = await fetch("/api/qr", {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
           const data = await response.json();
           console.log("🔍 DEBUG: Polling /api/qr response:", data);
 
@@ -251,7 +265,12 @@ export default function SettingsPage() {
   useEffect(() => {
     const fetchFAQs = async () => {
       try {
-        const response = await fetch("/api/faqs");
+        const authToken = localStorage.getItem("authToken");
+        const response = await fetch("/api/faqs", {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
         if (response.ok) {
           const data = await response.json();
           setFaqs(data);
@@ -284,8 +303,12 @@ export default function SettingsPage() {
     setSessionStatus("connecting");
 
     try {
+      const authToken = localStorage.getItem("authToken");
       const response = await fetch("/api/start-session", {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
       });
 
       if (response.ok) {
@@ -332,8 +355,12 @@ export default function SettingsPage() {
     }
 
     try {
+      const authToken = localStorage.getItem("authToken");
       const response = await fetch("/api/disconnect-session", {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
       });
       if (response.ok) {
         setWhatsappConnected(false);
@@ -365,10 +392,12 @@ export default function SettingsPage() {
     }
 
     try {
+      const authToken = localStorage.getItem("authToken");
       const response = await fetch("/api/faqs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(newFAQ),
       });
@@ -391,8 +420,12 @@ export default function SettingsPage() {
     if (!confirm("Are you sure you want to delete this FAQ?")) return;
 
     try {
+      const authToken = localStorage.getItem("authToken");
       const response = await fetch(`/api/faqs?id=${id}`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
       });
 
       if (response.ok) {

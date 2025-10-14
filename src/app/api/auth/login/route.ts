@@ -1,24 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
-import path from 'path';
+import { db } from '@/lib/database';
+import { Pool } from 'pg';
 
-const USERS_FILE = path.join(process.cwd(), 'data', 'users.json');
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-// Helper function to read users from file
-function readUsers(): any[] {
-  try {
-    if (fs.existsSync(USERS_FILE)) {
-      const data = fs.readFileSync(USERS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading users file:', error);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
   }
-  return [];
-}
+});
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,8 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    const users = readUsers();
-    const user = users.find((user: any) => user.email === email);
+    const user = await db.getUserByEmail(email);
 
     if (!user) {
       return NextResponse.json(
@@ -43,8 +35,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user with password hash for verification
+    // Note: We need to add a method to get user with password for login
+    const users = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (users.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      );
+    }
+
+    const dbUser = users.rows[0];
+
     // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await bcrypt.compare(password, dbUser.password_hash);
     if (!isValidPassword) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -60,7 +64,13 @@ export async function POST(request: NextRequest) {
     );
 
     // Return user data without password
-    const { password: _, ...userWithoutPassword } = user;
+    const userWithoutPassword = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    };
 
     return NextResponse.json({
       user: userWithoutPassword,

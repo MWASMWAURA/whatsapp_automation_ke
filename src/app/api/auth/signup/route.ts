@@ -1,42 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
-import path from 'path';
+import { db } from '@/lib/database';
 
-const USERS_FILE = path.join(process.cwd(), 'data', 'users.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-// Ensure data directory exists
-if (!fs.existsSync(path.join(process.cwd(), 'data'))) {
-  fs.mkdirSync(path.join(process.cwd(), 'data'), { recursive: true });
-}
-
-// Helper function to read users from file
-function readUsers(): any[] {
-  try {
-    if (fs.existsSync(USERS_FILE)) {
-      const data = fs.readFileSync(USERS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error reading users file:', error);
-  }
-  return [];
-}
-
-// Helper function to write users to file
-function writeUsers(users: any[]): void {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  } catch (error) {
-    console.error('Error writing users file:', error);
-  }
-}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log('Signup request body:', body); // Debug log
     const { email, password, name, phone } = body;
 
     if (!email || !password || !name || !phone) {
@@ -64,8 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    const users = readUsers();
-    const existingUser = users.find((user: any) => user.email === email);
+    const existingUser = await db.getUserByEmail(email);
     if (existingUser) {
       return NextResponse.json(
         { error: 'User with this email already exists' },
@@ -77,18 +48,7 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create new user
-    const newUser = {
-      id: Date.now().toString(),
-      email,
-      password: hashedPassword,
-      name,
-      phone,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    users.push(newUser);
-    writeUsers(users);
+    const newUser = await db.createUser(email, hashedPassword, name);
 
     // Generate JWT token
     const token = jwt.sign(
@@ -98,7 +58,13 @@ export async function POST(request: NextRequest) {
     );
 
     // Return user data without password
-    const { password: _, ...userWithoutPassword } = newUser;
+    const userWithoutPassword = {
+      id: newUser.id,
+      email: newUser.email,
+      name: newUser.name,
+      createdAt: newUser.createdAt,
+      updatedAt: newUser.updatedAt
+    };
 
     return NextResponse.json({
       user: userWithoutPassword,
